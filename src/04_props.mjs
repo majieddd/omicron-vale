@@ -50,6 +50,7 @@ function mergeGeoms(list) {
   return geo;
 }
 
+import { requestBlenderAsset } from './09_assets.mjs';
 // ---------- The Willow (hero tree) ----------
 export function buildWillow(scale = 1) {
   const g = new THREE.Group();
@@ -197,6 +198,13 @@ export function buildHut() {
     st.position.set(0.9 - i * 0.55, 0.05, D / 2 + 0.5 + i * 0.35);
     g.add(st);
   }
+  // Blender-authored watertight replacement loads asynchronously and swaps in;
+  // the procedural mesh keeps the game intact until (and unless) it arrives.
+  const proc = new THREE.Group();
+  proc.name = 'hut-proc';
+  while (g.children.length) proc.add(g.children[0]);
+  g.add(proc);
+  requestBlenderAsset('hut', g, (inst) => { if (proc.parent) proc.parent.remove(proc); });
   return g;
 }
 

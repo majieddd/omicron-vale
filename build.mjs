@@ -145,7 +145,7 @@ function resolveDep(depId) {
   addModule(depId, fp);
 }
 
-import { existsSync as exists } from 'node:fs';
+import { existsSync as exists, readdirSync } from 'node:fs';
 
 // entry
 const ENTRY = join(SRC, '08_main.mjs');
@@ -169,6 +169,14 @@ try { bundle = emit(ENTRY); } catch (e) { console.error('EMIT FAIL:', e.message)
 // registry preamble must come before any module code
 bundle = `var MOD = {};\n\n` + bundle;
 
+// collect blender GLB assets (base64) BEFORE assembly so they can be injected ahead of the bundle
+const glbDir = join(ROOT, 'assets', 'blender');
+const glbFiles = [];
+try { for (const f of readdirSync(glbDir)) if (f.endsWith('.glb')) glbFiles.push(f); } catch (e) { /* no assets dir: fine */ }
+const glbAssetDef = glbFiles.length
+  ? `window.__ASSET_GLB = {\n  ${glbFiles.map(f => `"${f.replace(/\.glb$/, '')}": "${readFileSync(join(glbDir, f)).toString('base64')}"`).join(',\n  ')}\n};\n`
+  : '';
+
 // assemble play.html from index.html
 let html = readFileSync(join(ROOT, 'index.html'), 'utf8');
 // replace the module script tag with inline classic script (function replacer - $ safety)
@@ -178,6 +186,7 @@ html = html.replace(/<script type="module" src="\/src\/08_main\.mjs"><\/script>/
   return `<script>
 window.addEventListener('error', function (e) { window.__ERRORS && window.__ERRORS.push(String(e.message || e)); });
 try {
+${glbAssetDef}
 ${bundle}
 } catch (err) {
   var b = document.getElementById && document.getElementById('booterr');

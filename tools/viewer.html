@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>GLB Viewer</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#333}canvas{display:block}</style>
+</head>
+<body>
+<script type="importmap">
+{"imports": {
+  "three": "/vendor/three.module.js",
+  "three/addons/loaders/GLTFLoader.js": "/vendor/addons/loaders/GLTFLoader.js",
+  "three/addons/utils/BufferGeometryUtils.js": "/vendor/addons/utils/BufferGeometryUtils.js"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xd0cbb5);
+const cam = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
+cam.position.set(12, 8, 12);
+cam.lookAt(0, 2, 0);
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const sun = new THREE.DirectionalLight(0xffe3b4, 2.2);
+sun.position.set(-10, 12, 6);
+scene.add(sun);
+const hemi = new THREE.HemisphereLight(0xdfe3cc, 0x7d8359, 0.8);
+scene.add(hemi);
+
+new GLTFLoader().load('/assets/blender/hut.glb', (g) => {
+  const root = g.scene;
+  root.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
+  scene.add(root);
+  // print sizes
+  const box = new THREE.Box3().setFromObject(root);
+  console.log('VIEWER_BBOX', JSON.stringify({min: box.min.toArray(), max: box.max.toArray()}));
+  window.__VIEWER_READY = true;
+  // auto-router: allow ?cam=x,y,z
+  const m = location.search.match(/cam=([-\d.]+),([-\d.]+),([-\d.]+)/);
+  if (m) { cam.position.set(+m[1], +m[2], +m[3]); cam.lookAt(0, 1.5, 0); }
+});
+
+// orbit keys via ?x,y,z on the camera
+window.__setCam = (x, y, z, tx, ty, tz) => { cam.position.set(x, y, z); cam.lookAt(tx||0, ty||1.5, tz||0); };
+
+window.addEventListener('resize', () => {
+  cam.aspect = innerWidth / innerHeight;
+  cam.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+renderer.setAnimationLoop(() => renderer.render(scene, cam));
+</script>
+</body>
+</html>

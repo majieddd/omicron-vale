@@ -12,6 +12,7 @@ import { buildProps, animateProps } from './04_props.mjs';
 import { makeEnemy, animateEnemy, makeTower, animateTower, updateHpBar } from './05_units.mjs';
 import { makeFXPools, makeProjectileMesh, makeBolt, makeBlastRing, makeIceRing, makeSoulBurst } from './06_fx.mjs';
 import { createAudio } from './07_audio.mjs';
+import { initBlenderAssets } from './09_assets.mjs';
 import { distToPath } from './02_sim.mjs';
 const distToPathSafe = (x, z) => distToPath(sim.path, x, z);
 
@@ -734,6 +735,7 @@ function boot() {
   buildCards();
   updateHud();
   updatePanel();
+  initBlenderAssets(); // async swap-in of Blender GLB assets (optional enhancement)
   document.getElementById('boot').classList.add('gone');
   window.__READY = true;
 }
