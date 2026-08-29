@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Omicron: Willow Vale Defense</title>
+<link rel="stylesheet" href="/src/07_ui.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "/vendor/three.module.js",
+    "three/addons/postprocessing/EffectComposer.js": "/vendor/addons/EffectComposer.js",
+    "three/addons/postprocessing/RenderPass.js": "/vendor/addons/RenderPass.js",
+    "three/addons/postprocessing/ShaderPass.js": "/vendor/addons/ShaderPass.js",
+    "three/addons/postprocessing/MaskPass.js": "/vendor/addons/MaskPass.js",
+    "three/addons/postprocessing/UnrealBloomPass.js": "/vendor/addons/UnrealBloomPass.js",
+    "three/addons/postprocessing/OutputPass.js": "/vendor/addons/OutputPass.js",
+    "three/addons/postprocessing/Pass.js": "/vendor/addons/Pass.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+  <div id="vignette"></div>
+  <div id="letterbox"></div>
+  <div id="hud">
+    <div id="topbar">
+      <div class="stat" id="stat-heart"><span class="ico">&#10084;</span><span id="lives" class="val">20</span></div>
+      <div class="stat" id="stat-gold"><span class="ico">&#9672;</span><span id="gold" class="val">0</span></div>
+      <div class="stat" id="stat-wave"><span class="ico">&#9873;</span><span id="wave" class="val">-</span></div>
+      <div class="spacer"></div>
+      <button id="btn-speed" class="hbtn" title="Game speed">1x</button>
+      <button id="btn-mute" class="hbtn" title="Mute">&#9835;</button>
+      <button id="btn-pause" class="hbtn" title="Pause">&#10074;&#10074;</button>
+    </div>
+    <div id="tray">
+      <div id="cards"></div>
+    </div>
+    <div id="panel" class="hidden">
+      <div id="panel-title">Tower</div>
+      <div id="panel-stats"></div>
+      <div id="panel-actions">
+        <button id="btn-upgrade" class="pbtn">Upgrade</button>
+        <button id="btn-sell" class="pbtn alt">Sell</button>
+      </div>
+    </div>
+    <div id="banner" class="hidden">
+      <div id="banner-title"></div>
+      <div id="banner-sub"></div>
+    </div>
+    <div id="toast"></div>
+  </div>
+  <div id="boot">Kindling the hearth... <span id="booterr"></span></div>
+</div>
+<script>
+window.__ERRORS = [];
+window.__ERRSTACKS = [];
+window.addEventListener('error', function (e) {
+  window.__ERRORS.push(String(e.message || e));
+  const st = String((e.error && e.error.stack) || '');
+  if (st) {
+    const first = st.split('\n').slice(0, 5).join(' | ');
+    if (!window.__ERRSTACKS.some(s => s.includes(first))) window.__ERRSTACKS.push(first);
+  }
+});
+window.addEventListener('unhandledrejection', function (e) { window.__ERRORS.push('promise: ' + String(e.reason)); });
+</script>
+<script type="module" src="/src/08_main.mjs"></script>
+</body>
+</html>
