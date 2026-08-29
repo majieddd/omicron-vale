@@ -166,6 +166,8 @@ try {
 
 let bundle = '';
 try { bundle = emit(ENTRY); } catch (e) { console.error('EMIT FAIL:', e.message); process.exit(1); }
+// registry preamble must come before any module code
+bundle = `var MOD = {};\n\n` + bundle;
 
 // assemble play.html from index.html
 let html = readFileSync(join(ROOT, 'index.html'), 'utf8');

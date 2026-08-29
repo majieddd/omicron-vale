@@ -9,6 +9,47 @@ function std(color, opts = {}) {
   return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.95, metalness: 0, flatShading: true }, opts));
 }
 
+// Minimal merge helper: bake transformed copies of a geometry into one BufferGeometry.
+// leafGeo is a non-indexed or indexed geometry; each entry applies matrix4 + color.
+function mergeGeoms(list) {
+  // list: [{geo, matrix, color}]
+  let totalPos = 0, totalIdx = 0, hasIndex = !!list[0].geo.index;
+  for (const it of list) {
+    totalPos += it.geo.attributes.position.count;
+    if (hasIndex && it.geo.index) totalIdx += it.geo.index.count;
+  }
+  const pos = new Float32Array(totalPos * 3);
+  const nor = new Float32Array(totalPos * 3);
+  const col = new Float32Array(totalPos * 3);
+  const idx = hasIndex ? new Uint32Array(totalIdx) : null;
+  const nm = new THREE.Matrix3();
+  const tmpC = new THREE.Color();
+  let vo = 0, io = 0;
+  for (const it of list) {
+    const p = it.geo.attributes.position;
+    const n = it.geo.attributes.normal;
+    nm.getNormalMatrix(it.matrix);
+    tmpC.set(it.color);
+    for (let i = 0; i < p.count; i++, vo++) {
+      const v = new THREE.Vector3(p.getX(i), p.getY(i), p.getZ(i)).applyMatrix4(it.matrix);
+      pos[vo * 3] = v.x; pos[vo * 3 + 1] = v.y; pos[vo * 3 + 2] = v.z;
+      const nv = new THREE.Vector3(n.getX(i), n.getY(i), n.getZ(i)).applyMatrix3(nm).normalize();
+      nor[vo * 3] = nv.x; nor[vo * 3 + 1] = nv.y; nor[vo * 3 + 2] = nv.z;
+      col[vo * 3] = tmpC.r; col[vo * 3 + 1] = tmpC.g; col[vo * 3 + 2] = tmpC.b;
+    }
+    if (idx && it.geo.index) {
+      const g = it.geo.index;
+      for (let i = 0; i < g.count; i++, io++) idx[io] = g.getX(i) + vo - p.count;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  if (idx) geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  return geo;
+}
+
 // ---------- The Willow (hero tree) ----------
 export function buildWillow(scale = 1) {
   const g = new THREE.Group();
@@ -34,14 +75,17 @@ export function buildWillow(scale = 1) {
   hub.position.set(px + 0.3, crownY + 0.15, pz);
   hub.castShadow = true;
   g.add(hub);
-  // Drooping leaf strands: curved ribbons of little leaf planes.
-  // Dense double ring: inner short + outer long, like the reference curtain.
+  // Drooping leaf strands: each strand is ONE merged mesh (all leaves baked),
+  // so the willow is ~54 draw calls of leaves + trunk instead of ~800.
   const leafGeo = new THREE.CircleGeometry(0.18, 5);
-  const leafMat = new THREE.MeshStandardMaterial({ color: PAL.willow, roughness: 0.9, side: THREE.DoubleSide, flatShading: true, alphaTest: 0.2 });
-  const leafMatHi = new THREE.MeshStandardMaterial({ color: PAL.willowHi, roughness: 0.9, side: THREE.DoubleSide, flatShading: true, alphaTest: 0.2 });
-  const leafMatLo = new THREE.MeshStandardMaterial({ color: PAL.willowLo, roughness: 0.9, side: THREE.DoubleSide, flatShading: true, alphaTest: 0.2 });
+  const strandMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide, flatShading: true, alphaTest: 0.2 });
   const strands = [];
   const N = 54;
+  const m4 = new THREE.Matrix4();
+  const eul = new THREE.Euler();
+  const q = new THREE.Quaternion();
+  const sph = new THREE.Vector3();
+  const colHi = new THREE.Color(PAL.willowHi), colMid = new THREE.Color(PAL.willow), colLo = new THREE.Color(PAL.willowLo);
   for (let i = 0; i < N; i++) {
     const ring = i % 3; // 0: long outer, 1: inner, 2: inner short
     const a = (i / N) * Math.PI * 2 + rng() * 0.4;
@@ -50,21 +94,23 @@ export function buildWillow(scale = 1) {
     const sz = pz + Math.sin(a) * rr;
     const len = ring === 0 ? 3.6 + rng() * 2.6 : (ring === 1 ? 2.6 + rng() * 2.0 : 1.6 + rng() * 1.2);
     const lean = 0.5 + rng() * 0.25;
-    const strand = new THREE.Group();
     const nLeaf = 11 + ((rng() * 5) | 0);
+    const parts = [];
     for (let k = 0; k < nLeaf; k++) {
       const t = k / (nLeaf - 1);
       const y = -t * len;
       const x = Math.sin(t * 1.55) * len * lean * 0.5;
-      const leaf = new THREE.Mesh(leafGeo, ring === 0 ? (k > nLeaf * 0.6 ? leafMatHi : leafMat) : (rng() > 0.5 ? leafMat : leafMatLo));
-      leaf.position.set(x, y, 0);
-      leaf.rotation.set(rng() * 0.5 - 0.25, rng() * Math.PI * 2, x * 1.6);
+      eul.set(rng() * 0.5 - 0.25, rng() * Math.PI * 2, x * 1.6);
+      q.setFromEuler(eul);
       const s = 0.85 + rng() * 1.15 - Math.min(1, t * 1.1) * 0.3;
-      leaf.scale.setScalar(s);
-      strand.add(leaf);
+      m4.compose(sph.set(x, y, 0), q, new THREE.Vector3(s, s, s));
+      const c = ring === 0 ? (k > nLeaf * 0.6 ? colHi : colMid) : (rng() > 0.5 ? colMid : colLo);
+      parts.push({ geo: leafGeo, matrix: m4.clone(), color: c });
     }
+    const strand = new THREE.Mesh(mergeGeoms(parts), strandMat);
     strand.position.set(sx, crownY + 0.15, sz);
     strand.rotation.y = a;
+    strand.castShadow = true;
     g.add(strand);
     strands.push(strand);
   }
@@ -277,19 +323,29 @@ export function buildReeds() {
 export function buildGrassTufts() {
   const g = new THREE.Group();
   g.name = 'tufts';
-  const mat = new THREE.MeshStandardMaterial({ color: 0x7f8c50, roughness: 1, flatShading: true, side: THREE.DoubleSide });
-  const matHi = new THREE.MeshStandardMaterial({ color: 0x9aa75e, roughness: 1, flatShading: true, side: THREE.DoubleSide });
+  // one merged geometry for ALL tufts (128 clusters x ~4 blades = ~500 meshes -> 1)
+  const bladeGeo = new THREE.ConeGeometry(0.045, 1, 3);
+  const parts = [];
+  const m4 = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const eul = new THREE.Euler();
+  const scl = new THREE.Vector3();
+  const pos = new THREE.Vector3();
+  const cMid = new THREE.Color(0x7f8c50), cHi = new THREE.Color(0x9aa75e);
   for (let i = 0; i < 130; i++) {
     const x = (rng() - 0.5) * 40, z = (rng() - 0.5) * 30;
     const n = 3 + ((rng() * 4) | 0);
     for (let k = 0; k < n; k++) {
       const h = 0.25 + rng() * 0.45;
-      const b = new THREE.Mesh(new THREE.ConeGeometry(0.045, h, 3), rng() > 0.5 ? mat : matHi);
-      b.position.set(x + (rng() - 0.5) * 0.4, h / 2, z + (rng() - 0.5) * 0.4);
-      b.rotation.z = (rng() - 0.5) * 0.35;
-      g.add(b);
+      eul.set(0, 0, (rng() - 0.5) * 0.35);
+      q.setFromEuler(eul);
+      m4.compose(pos.set(x + (rng() - 0.5) * 0.4, h / 2, z + (rng() - 0.5) * 0.4), q, scl.set(1, h, 1));
+      parts.push({ geo: bladeGeo, matrix: m4.clone(), color: rng() > 0.5 ? cMid : cHi });
     }
   }
+  const tuft = new THREE.Mesh(mergeGeoms(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, side: THREE.DoubleSide }));
+  tuft.castShadow = true;
+  g.add(tuft);
   return g;
 }
 
