@@ -152,29 +152,34 @@ export function makeBolt(from, targets, dur) {
   return { mesh: g, dur, t: 0 };
 }
 
-// --- ground blast ring ---
+// --- ground blast ring (lumen pulse): thin bright flash, no huge glow wall ---
 export function makeBlastRing(r) {
-  const geo = new THREE.RingGeometry(r * 0.7, r, 26);
-  const mat = new THREE.MeshBasicMaterial({ color: 0xffc879, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false });
+  // cap visual radius; gameplay radius (damage reach) never drawn as FX
+  const vis = Math.min(r, 3.2);
+  const geo = new THREE.RingGeometry(vis * 0.82, vis, 32);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffc879, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false });
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
   m.position.y = 0.12;
-  const tm = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }));
+  const tm = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
   tm.rotation.x = -Math.PI / 2;
   tm.position.y = 0.1;
-  tm.scale.setScalar(0.8);
+  tm.scale.setScalar(0.82);
   m.add(tm);
   return { mesh: m, t: 0, dur: 0.5, r };
 }
 
-// --- ice pulse ring (frost) ---
+// --- ice pulse ring (frost): SMALL breathing footprint at the totem, NOT range-sized
 export function makeIceRing(range) {
-  const geo = new THREE.RingGeometry(range * 0.93, range, 40);
-  const mat = new THREE.MeshBasicMaterial({ color: 0x9fd8e8, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false });
+  // visual radius fixed at ~2.6 (totem footprint). Gameplay radius is the
+  // frost slow field (range), shown by the placement ghost, never by FX.
+  const vis = 2.6;
+  const geo = new THREE.RingGeometry(vis * 0.86, vis, 40);
+  const mat = new THREE.MeshBasicMaterial({ color: 0x9fd8e8, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false });
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
-  m.position.y = 0.2;
-  return { mesh: m, t: 0, dur: 0.6, range };
+  m.position.y = 0.22;
+  return { mesh: m, t: 0, dur: 0.8, range };
 }
 
 // --- soul puff on enemy death ---

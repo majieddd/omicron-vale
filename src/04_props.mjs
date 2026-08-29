@@ -150,6 +150,11 @@ export function buildHut() {
     slab.position.set(s * (W * 0.25), H + roofH * 0.5, 0);
     slab.castShadow = true;
     g.add(slab);
+    // soffit board: closes the underside gap between wall top and roof slab
+    const soff = new THREE.Mesh(new THREE.BoxGeometry(W * 0.55, 0.1, D + 1.5), std(PAL.woodLo));
+    soff.position.set(s * W * 0.19, H + 0.06, 0);
+    soff.castShadow = true;
+    g.add(soff);
   }
   const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, D + 1.7, 6), thatchMat);
   ridge.rotation.x = Math.PI / 2;

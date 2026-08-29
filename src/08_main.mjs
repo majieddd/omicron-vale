@@ -73,6 +73,7 @@ scene.add(mist.group);
 const fx = makeFXPools();
 scene.add(fx.group);
 const bolts = [], rings = [], souls = [];
+window.__fx = { bolts, rings, souls }; // diagnostic hook (harmless read-only)
 const activeProjectiles = []; // {sim, mesh, kind, phase}
 
 // ---------- sim ----------
