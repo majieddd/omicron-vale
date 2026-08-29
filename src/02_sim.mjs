@@ -244,7 +244,7 @@ function spawnEnemy(s, kind) {
     speed: def.speed, reward: def.reward, color: def.color, kindFlag: def.kind,
     jitter: def.jitter || 0, lane: (s.rng() - 0.5) * 0.9,
     d: 0, x: 0, z: 0, dead: false, flash: 0, slowT: 0, slowD: 0,
-    anim: s.rng() * 10, state: 'walk', stateT: 0, goal: 0
+    anim: s.rng() * 10, state: 'walk', stateT: 0, goal: 0, face: 0
   });
   s.events.push({ type: 'spawn', id, kind });
 }
@@ -269,6 +269,7 @@ export function step(s, dtRaw) {
     const side = Math.sin(e.d * 0.8 + e.anim) * e.jitter;
     const sdx = -p.dz, sdz = p.dx;
     e.x = p.x + sdx * side; e.z = p.z + sdz * side;
+    e.face = Math.atan2(p.dx, p.dz); // face along travel direction
     if (e.flash > 0) e.flash -= dt;
     if (e.d >= s.path.len - 0.6) {
       e.dead = true;

@@ -12,6 +12,8 @@ import { buildProps, animateProps } from './04_props.mjs';
 import { makeEnemy, animateEnemy, makeTower, animateTower } from './05_units.mjs';
 import { makeFXPools, makeProjectileMesh, makeBolt, makeBlastRing, makeIceRing, makeSoulBurst } from './06_fx.mjs';
 import { createAudio } from './07_audio.mjs';
+import { distToPath } from './02_sim.mjs';
+const distToPathSafe = (x, z) => distToPath(sim.path, x, z);
 
 // ---------- renderer ----------
 const canvas = document.getElementById('game');
@@ -128,8 +130,13 @@ function buildCards() {
 }
 function selectBuild(key) {
   selectedBuildKey = selectedBuildKey === key ? null : key;
+  if (selectedBuildKey) {
+    toast(`Click the ground to raise a ${TOWERS[selectedBuildKey].name}`);
+    makeGhost(selectedBuildKey);
+  } else {
+    ghostGroup.visible = false;
+  }
   updateCards();
-  if (selectedBuildKey) toast(`Click the ground to raise a ${TOWERS[selectedBuildKey].name}`);
 }
 function updateCards() {
   for (const el of ui.cards.children) {
@@ -151,7 +158,28 @@ const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const groundPt = new THREE.Vector3();
 const ghostGroup = new THREE.Group();
 let ghostMat = null;
+let ghostRing = null;
 scene.add(ghostGroup);
+
+function makeGhost(key) {
+  ghostGroup.clear();
+  const P = makeTower(key);
+  ghostGroup.add(P.group);
+  ghostMat = new THREE.MeshBasicMaterial({ color: 0x9fe8a0, transparent: true, opacity: 0.55, depthWrite: false });
+  ghostGroup.traverse(o => {
+    if (o.isMesh) {
+      o.castShadow = false;
+      o.material = ghostMat;
+    }
+  });
+  const range = TOWERS[key].lv[0].range;
+  const ringGeo = new THREE.RingGeometry(range - 0.06, range, 48);
+  ghostRing = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xece6cf, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
+  ghostRing.rotation.x = -Math.PI / 2;
+  ghostRing.position.y = 0.06;
+  ghostGroup.add(ghostRing);
+  ghostGroup.visible = false;
+}
 
 function screenToGround(ev) {
   mouse.x = (ev.clientX / window.innerWidth) * 2 - 1;
@@ -161,6 +189,19 @@ function screenToGround(ev) {
   if (!hit) return null;
   return { x: groundPt.x, z: groundPt.z };
 }
+
+// hover ghost update
+canvas.addEventListener('pointermove', ev => {
+  if (!selectedBuildKey) return;
+  if (!ghostGroup.children.length) makeGhost(selectedBuildKey);
+  const p = screenToGround(ev);
+  if (!p) return;
+  ghostGroup.visible = true;
+  ghostGroup.position.set(p.x, 0, p.z);
+  const ok = placementOk(p.x, p.z);
+  ghostMat.color.setHex(ok ? 0x9fe8a0 : 0xe08a7a);
+  ghostGroup.scale.set(1, 1, 1);
+});
 
 // placement validity
 function placementOk(x, z) {
@@ -173,8 +214,6 @@ function placementOk(x, z) {
   }
   return true;
 }
-import { distToPath } from './02_sim.mjs';
-const distToPathSafe = (x, z) => distToPath(sim.path, x, z);
 let dragStart = null;
 canvas.addEventListener('pointerdown', ev => { dragStart = { x: ev.clientX, y: ev.clientY }; });
 canvas.addEventListener('pointerup', ev => {
@@ -187,8 +226,7 @@ canvas.addEventListener('pointerup', ev => {
   if (selectedBuildKey) {
     const res = placeTowerSim(p.x, p.z);
     if (res.ok) toast('Tower raised');
-  } else {
-    // select a tower
+  } else {    // select a tower
     let hit = null, bd = 1.3 * 1.3;
     for (const t of sim.towers) {
       const dx = p.x - t.x, dz = p.z - t.z;
@@ -210,6 +248,7 @@ function placeTowerSim(x, z) {
   if (res.ok) {
     audio.sfx('place');
     selectedBuildKey = null;
+    ghostGroup.visible = false;
     updateCards();
   } else if (res.why === 'gold') toast('Not enough gold');
   return res;
@@ -229,11 +268,12 @@ function doSell() {
   updatePanel();
 }
 function updatePanel() {
-  if (selectedTowerId == null) { ui.panel.classList.add('hidden'); return; }
+  if (selectedTowerId == null) { ui.panel.classList.add('hidden'); hideRangeRing(); return; }
   const t = sim.towers.find(q => q.id === selectedTowerId);
-  if (!t) { ui.panel.classList.add('hidden'); return; }
+  if (!t) { ui.panel.classList.add('hidden'); hideRangeRing(); return; }
   const def = TOWERS[t.type];
   ui.panel.classList.remove('hidden');
+  showRangeRing(t);
   ui.panelTitle.textContent = def.name;
   ui.panelSub.textContent = `Level ${t.lv + 1}`;
   const next = def.lv[t.lv + 1];
@@ -247,6 +287,21 @@ function updatePanel() {
   ui.btnUpgrade.textContent = next ? `Upgrade (${next.cost}g)` : 'Max level';
   ui.btnUpgrade.classList.toggle('disabled', !next || sim.gold < next.cost);
 }
+
+// range ring for selected tower
+const selRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.98, 1.0, 48),
+  new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false })
+);
+selRing.rotation.x = -Math.PI / 2;
+selRing.visible = false;
+scene.add(selRing);
+function showRangeRing(t) {
+  selRing.visible = true;
+  selRing.scale.setScalar(t.range);
+  selRing.position.set(t.x, groundHeight(t.x, t.z, sim.path, world.noise) + 0.07, t.z);
+}
+function hideRangeRing() { selRing.visible = false; }
 
 // ---------- keyboard ----------
 window.addEventListener('keydown', ev => {
@@ -285,12 +340,18 @@ $('topbar').insertBefore(waveBtn, $('btn-speed'));
 waveBtn.addEventListener('click', startWaveClick);
 function startWaveClick() {
   audio.resume();
-  if (startWaveOk()) {
+  if (startWave(sim)) {
     audio.sfx('wave-horn');
     showBanner(`WAVE ${sim.wave}`, WAVES[sim.wave - 1].name, 2800);
   } else toast('Wave already in progress');
 }
-import { startWave as startWaveOk } from './02_sim.mjs';
+
+function shortestAngle(from, to) {
+  let d = (to - from) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
 
 // ---------- entity sync (render side) ----------
 const enemyViews = new Map(); // id -> {P, parts}
@@ -310,6 +371,8 @@ function syncEnemies(dt) {
     v.P.group.position.x = e.x;
     v.P.group.position.z = e.z;
     v.P.group.position.y = 0;
+    // ease-rotate toward travel direction
+    v.P.group.rotation.y += shortestAngle(v.P.group.rotation.y, e.face) * Math.min(1, dt * 6);
     animateEnemy(v.P, e, renderTime);
   }
   // removal is handled by the kill/leak events (they carry the id and a flag);
