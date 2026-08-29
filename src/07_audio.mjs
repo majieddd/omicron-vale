@@ -13,10 +13,13 @@ export function createAudio() {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
     } catch (e) { return false; }
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -18; comp.knee.value = 20; comp.ratio.value = 8;
+    comp.threshold.value = -14; comp.knee.value = 16; comp.ratio.value = 10;
+    comp.attack.value = 0.004; comp.release.value = 0.24;
     master = ctx.createGain();
-    master.gain.value = muted ? 0 : 0.9;
-    comp.connect(master); master.connect(ctx.destination);
+    master.gain.value = muted ? 0 : 0.75;
+    // Signal path: sources -> master (so mute works via master.gain) -> comp (anti-clip) -> out
+    master.connect(comp);
+    comp.connect(ctx.destination);
     return true;
   }
 

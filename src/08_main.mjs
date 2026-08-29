@@ -9,7 +9,7 @@ import { buildPath, newState, startWave, placeTower, upgradeTower, sellTower, st
 import { clamp, lerp } from './00_util.mjs';
 import { buildWorldScene, groundHeight, buildSky, buildHills, buildMistLayers } from './03_world.mjs';
 import { buildProps, animateProps } from './04_props.mjs';
-import { makeEnemy, animateEnemy, makeTower, animateTower } from './05_units.mjs';
+import { makeEnemy, animateEnemy, makeTower, animateTower, updateHpBar } from './05_units.mjs';
 import { makeFXPools, makeProjectileMesh, makeBolt, makeBlastRing, makeIceRing, makeSoulBurst } from './06_fx.mjs';
 import { createAudio } from './07_audio.mjs';
 import { distToPath } from './02_sim.mjs';
@@ -37,7 +37,7 @@ camera.lookAt(0, 0, 0);
 // composer
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.45, 0.6, 0.85);
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.35, 0.55, 0.9);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
@@ -116,13 +116,19 @@ function buildCards() {
   ui.cards.innerHTML = '';
   for (const key of Object.keys(TOWERS)) {
     const t = TOWERS[key];
+    const lv = t.lv[0];
+    const dps = Math.round(lv.dmg * lv.rate * 10) / 10;
+    const tag = t.desc.split('.')[0].replace(/^[^,]*,\s*/, '') || '';
+    const mechanic = key === 'willow' ? 'single · air' : key === 'forge' ? 'splash' : key === 'frost' ? 'slow 65%' : key === 'storm' ? 'chain 3' : 'burst · air';
     const el = document.createElement('div');
     el.className = 'card';
     el.dataset.key = key;
     el.innerHTML = `<span class="key">${t.key}</span>
       <span class="tswatch" style="background:#${t.color.toString(16).padStart(6, '0')}"></span>
       <span class="tname">${t.name}</span>
-      <span class="tcost">${t.cost}g</span>
+      <span class="tstats">${dps} dps · rng ${lv.range}</span>
+      <span class="tmech">${mechanic}</span>
+      <span class="tcost">${lv.cost}g</span>
       <span class="tdesc">${t.desc}</span>`;
     el.addEventListener('click', () => selectBuild(key));
     ui.cards.appendChild(el);
@@ -149,6 +155,13 @@ function updateHud() {
   ui.lives.textContent = sim.lives;
   ui.gold.textContent = Math.floor(sim.gold);
   ui.wave.textContent = sim.wave > 0 ? sim.wave + '/' + WAVES.length : (sim.phase === 'build' ? '-' : sim.wave);
+  // boss bar
+  const boss = sim.enemies.find(e => e.kind === 'boss');
+  const bossbar = document.getElementById('bossbar');
+  if (boss) {
+    bossbar.classList.remove('hidden');
+    document.getElementById('bossbar-fill').style.width = Math.max(0, 100 * boss.hp / boss.maxHp) + '%';
+  } else bossbar.classList.add('hidden');
 }
 
 // ---------- input ----------
@@ -197,7 +210,7 @@ canvas.addEventListener('pointermove', ev => {
   const p = screenToGround(ev);
   if (!p) return;
   ghostGroup.visible = true;
-  ghostGroup.position.set(p.x, 0, p.z);
+  ghostGroup.position.set(p.x, groundHeight(p.x, p.z, sim.path, world.noise), p.z); // match syncTowers
   const ok = placementOk(p.x, p.z);
   ghostMat.color.setHex(ok ? 0x9fe8a0 : 0xe08a7a);
   ghostGroup.scale.set(1, 1, 1);
@@ -353,6 +366,24 @@ function shortestAngle(from, to) {
   return d;
 }
 
+// ---------- GPU resource disposal (leak prevention) ----------
+const SHARED_DISPOSE = new Set(); // geometry/material that must survive (shared mats)
+function disposeView(obj) {
+  obj.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (m.userData && m.userData.__shared) continue; // shared across entities
+        if (!SHARED_DISPOSE.has(m)) {
+          SHARED_DISPOSE.add(m); // disposed once, no double free
+          m.dispose();
+        }
+      }
+    }
+  });
+}
+
 // ---------- entity sync (render side) ----------
 const enemyViews = new Map(); // id -> {P, parts}
 const towerViews = new Map(); // id -> {P}
@@ -371,14 +402,30 @@ function syncEnemies(dt) {
     v.P.group.position.x = e.x;
     v.P.group.position.z = e.z;
     v.P.group.position.y = 0;
-    // ease-rotate toward travel direction
+    // ease-rotate toward travel direction; stalker sway is applied to body, not group
     v.P.group.rotation.y += shortestAngle(v.P.group.rotation.y, e.face) * Math.min(1, dt * 6);
     animateEnemy(v.P, e, renderTime);
+    // ground offset: boss model hangs below its origin; keep feet on the road (dip preserved)
+    if (e.kind === 'boss') {
+      const dip = v.P.group.userData.__dip || 0;
+      v.P.group.position.y = groundHeight(e.x, e.z, sim.path, world.noise) + 1.45 + dip;
+    }
+    // hp bar
+    const hb = v.P.parts.hpBar;
+    if (e.hp < e.maxHp) {
+      hb.visible = true;
+      updateHpBar(hb, e.hp / e.maxHp);
+      // face camera-ish: bar's +Z should point at the camera (billboard on Y)
+      const dx = camera.position.x - e.x, dz = camera.position.z - e.z;
+      hb.rotation.y = Math.atan2(dx, dz);
+      hb.rotation.x = 0;
+    } else hb.visible = false;
   }
   // removal is handled by the kill/leak events (they carry the id and a flag);
   // this pass is only a safety net for anything that vanished silently.
   for (const [id, v] of enemyViews) {
     if (!seen.has(id)) {
+      disposeView(v.P.group);
       scene.remove(v.P.group);
       enemyViews.delete(id);
     }
@@ -430,6 +477,7 @@ function syncTowers(dt) {
   }
   for (const [id, v] of towerViews) {
     if (!seen.has(id)) {
+      disposeView(v.P.group);
       scene.remove(v.P.group);
       towerViews.delete(id);
     }
@@ -470,7 +518,7 @@ function syncProjectiles(dt) {
   // remove meshes whose sim entry is gone
   for (const p of Array.from(projViews)) {
     if (!sim.projectiles.includes(p)) {
-      if (p._mesh) { scene.remove(p._mesh); p._mesh = null; }
+      if (p._mesh) { disposeView(p._mesh); scene.remove(p._mesh); p._mesh = null; }
       projViews.delete(p);
     }
   }
@@ -528,15 +576,18 @@ function stepFrame(now) {
     b.t += dtReal;
     const k = b.t / b.dur;
     b.mesh.children.forEach(c => { if (c.material) c.material.opacity = Math.max(0, 1 - k); });
-    if (k >= 1) { scene.remove(b.mesh); bolts.splice(i, 1); }
+    if (k >= 1) { disposeView(b.mesh); scene.remove(b.mesh); bolts.splice(i, 1); }
   }
   for (let i = rings.length - 1; i >= 0; i--) {
     const r = rings[i];
     r.t += dtReal;
     const k = r.t / r.dur;
-    r.mesh.scale.setScalar(0.4 + k * 1.3);
-    r.mesh.children.forEach(c => { if (c.material) c.material.opacity = Math.max(0, 0.8 * (1 - k)); });
-    if (k >= 1) { scene.remove(r.mesh); rings.splice(i, 1); }
+    // expand from 40% to exactly the authored radius (rings are authored at full radius)
+    r.mesh.scale.setScalar(0.4 + k * 0.6);
+    const alpha = Math.max(0, 0.8 * (1 - k));
+    r.mesh.children.forEach(c => { if (c.material) c.material.opacity = alpha; });
+    if (r.mesh.material) r.mesh.material.opacity = alpha * (r.mesh.material.opacity !== undefined ? 0.8 : 1);
+    if (k >= 1) { disposeView(r.mesh); scene.remove(r.mesh); rings.splice(i, 1); }
   }
   for (let i = souls.length - 1; i >= 0; i--) {
     const s = souls[i];
@@ -545,7 +596,7 @@ function stepFrame(now) {
     s.mesh.position.y = 0.8 + k * 2.2;
     s.mesh.scale.setScalar(1 - k * 0.6);
     s.mesh.material.opacity = Math.max(0, 0.9 * (1 - k));
-    if (k >= 1) { scene.remove(s.mesh); souls.splice(i, 1); }
+    if (k >= 1) { disposeView(s.mesh); scene.remove(s.mesh); souls.splice(i, 1); }
   }
 
   // camera: hero angle + gentle sway + kick
@@ -584,17 +635,22 @@ function stepFrame(now) {
 
 // ---------- event processing ----------
 function processSimEvents() {
-  for (const ev of sim.events) {
+  // snapshot + clear at the TOP: a throwing handler must never re-fire events
+  const evs = sim.events;
+  sim.events = [];
+  for (const ev of evs) {
     switch (ev.type) {
       case 'kill': {
         audio.sfx(ev.kind === 'wisp' ? 'kill-fly' : ev.kind === 'boss' ? 'kill-boss' : 'kill');
         const v = enemyViews.get(ev.id);
-        if (v) { spawnDeathBurst(ev.id, v); scene.remove(v.P.group); enemyViews.delete(ev.id); }
+        if (v) { spawnDeathBurst(ev.id, v); disposeView(v.P.group); scene.remove(v.P.group); enemyViews.delete(ev.id); }
         break;
       }
       case 'leak': {
         audio.sfx('leak');
-        toast('The hearth is damaged!');
+        const v = enemyViews.get(ev.id);
+        if (v) { disposeView(v.P.group); scene.remove(v.P.group); enemyViews.delete(ev.id); }
+        toast(ev.boss ? 'The Stonehorn breached the hearth! -10 lives' : 'The hearth is damaged!');
         break;
       }
       case 'wave-start': {
@@ -657,17 +713,19 @@ function processSimEvents() {
       default: break;
     }
   }
-  // drain bolts from sim.shots
-  for (const sh of sim.shots) {
+  // drain bolts from sim.shots (prune consumed entries so the array never grows)
+  for (let i = sim.shots.length - 1; i >= 0; i--) {
+    const sh = sim.shots[i];
     if (!sh._done) {
       sh._done = true;
       const b = makeBolt({ x: sh.from.x, y: sh.from.y, z: sh.from.z }, sh.pts, sh.dur);
       scene.add(b.mesh);
       bolts.push(b);
       audio.sfx('storm');
+    } else {
+      sim.shots.splice(i, 1);
     }
   }
-  sim.events.length = 0;
 }
 
 // ---------- boot ----------

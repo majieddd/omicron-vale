@@ -20,6 +20,28 @@ function limb(geo, m, x, y, z) {
 // Readability scales applied per kind at spawn (TD camera distance).
 const ENEMY_SCALE = { wisp: 1.75, beetle: 1.6, ember: 1.75, stalker: 1.55, grunt: 1.55, boss: 1.15 };
 
+// Billboard HP bar (bg + fill), added as children of each enemy group.
+const hpBgGeo = new THREE.PlaneGeometry(1.0, 0.14);
+const hpBgMat = new THREE.MeshBasicMaterial({ color: 0x2e2a20, transparent: true, opacity: 0.75, depthWrite: false });
+hpBgMat.userData.__shared = true; // shared across all enemies; never disposed
+const hpFgMat = new THREE.MeshBasicMaterial({ color: 0x9fe8a0, transparent: true, opacity: 0.95, depthWrite: false });
+function makeHpBar(width) {
+  const g = new THREE.Group();
+  const bg = new THREE.Mesh(hpBgGeo, hpBgMat);
+  const fg = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.09), hpFgMat.clone());
+  fg.material.userData.__shared = false; // per-bar clone IS disposable
+  fg.position.z = 0.001;
+  g.add(bg, fg);
+  g.scale.setScalar(width);
+  return g;
+}
+export function updateHpBar(bar, frac) {
+  const fg = bar.children[1];
+  fg.scale.x = Math.max(0.0001, frac);
+  fg.position.x = -(1 - Math.max(0, frac)) * 0.48;
+  fg.material.color.setHex(frac > 0.5 ? 0x9fe8a0 : frac > 0.22 ? 0xffd98a : 0xe08a7a);
+}
+
 export function makeEnemy(kind) {
   const def = ENEMIES[kind];
   const g = new THREE.Group();
@@ -231,6 +253,12 @@ export function makeEnemy(kind) {
     P.parts.torso = torso;
   }
   P.group.scale.setScalar(ENEMY_SCALE[kind] || 1.6);
+  // hp bar floats above the creature (billboard-ish; small enough to read from TD cam)
+  const hb = makeHpBar(kind === 'boss' ? 1.6 : 1.0);
+  hb.position.y = (kind === 'boss' ? 4.6 : (kind === 'grunt' || kind === 'beetle' ? 1.5 : 2.0));
+  hb.visible = false; // shown when damaged
+  g.add(hb);
+  P.parts.hpBar = hb;
   return P;
 }
 
@@ -280,9 +308,9 @@ export function animateEnemy(P, e, t) {
     p.plume.rotation.z = Math.sin(t * 9 + e.anim * 2) * 0.16 + 0.12;
     p.plume.scale.y = 1 + Math.sin(t * 11) * 0.18;
   } else if (P.kind === 'stalker') {
-    // gliding sway, weaving arms
-    g.rotation.y = Math.sin(t * 1.7 + e.anim * 3) * 0.1;
+    // gliding sway, weaving arms (sway on body/head parts so group facing survives)
     p.body.rotation.z = Math.sin(walkPh * 0.55) * 0.12;
+    p.body.rotation.y = Math.sin(t * 1.7 + e.anim * 3) * 0.08;
     for (const A of p.arms) {
       A.arm.rotation.x = Math.sin(walkPh + A.side) * 0.5;
       A.arm.rotation.z = A.side * 0.65 + Math.sin(t * 2.2 + A.side) * 0.1;
@@ -306,7 +334,8 @@ export function animateEnemy(P, e, t) {
       L.hip.rotation.x = -hitch * 0.55;
       L.hip.position.y = 1.35 - hitch * 0.3;
     }
-    g.position.y = -stomp * 0.14;
+    // dip stored for syncEnemies (which owns absolute group Y for grounding)
+    g.userData.__dip = -stomp * 0.12;
     g.rotation.z = Math.sin(walkPh * 0.5) * 0.05;
     p.torso.rotation.y = Math.sin(walkPh * 0.5) * 0.14;
     for (const A of p.arms) {
@@ -315,13 +344,28 @@ export function animateEnemy(P, e, t) {
     const beat = 1 + Math.sin(t * 2.4) * 0.3;
     p.core.scale.setScalar(beat);
   }
-  // flash tint on hit (sim sets flash>0)
+  // flash tint on hit (sim sets flash>0); restore base emissive when it ends
   if (e.flash > 0) {
     const f = e.flash / 0.12;
-    g.traverse(o => { if (o.material && o.material.emissive) {
-      if (!o.userData.baseEm) o.userData.baseEm = o.material.emissiveIntensity || 0;
-      o.material.emissive.setRGB(0.6 * f, 0.6 * f, 0.6 * f);
-    }});
+    g.traverse(o => {
+      if (o.material && o.material.emissive) {
+        if (!o.userData.__baseEm) {
+          o.userData.__baseEm = { r: o.material.emissive.r, g: o.material.emissive.g, b: o.material.emissive.b };
+        }
+        // blend grey flash ON TOP of base glow instead of replacing it
+        o.material.emissive.setRGB(
+          o.userData.__baseEm.r + (0.6 * f),
+          o.userData.__baseEm.g + (0.6 * f),
+          o.userData.__baseEm.b + (0.6 * f)
+        );
+      }
+    });
+  } else {
+    g.traverse(o => {
+      if (o.material && o.material.emissive && o.userData.__baseEm) {
+        o.material.emissive.setRGB(o.userData.__baseEm.r, o.userData.__baseEm.g, o.userData.__baseEm.b);
+      }
+    });
   }
 }
 

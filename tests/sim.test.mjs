@@ -7,6 +7,7 @@ const path = buildPath(ctrl);
 
 // ---- determinism: same seed => identical snapshots
 const sA = newState(buildPath(ctrl)), sB = newState(buildPath(ctrl));
+sA.gold = 2000; sB.gold = 2000;
 startWave(sA); startWave(sB);
 const placeA = [[ 'willow', -3, -4.5 ], [ 'forge', 2.5, -3.5 ], [ 'frost', 6.5, 3.4 ], [ 'storm', 10.5, -3 ], [ 'lumen', 12.5, 2.5 ]];
 for (const [k, x, z] of placeA) { placeTower(sA, k, x, z); placeTower(sB, k, x, z); }
@@ -18,6 +19,7 @@ console.log('determinism OK, snapshot after 10min:', snap(sA), 'phase:', sA.phas
 // ---- winnability with a competent-ish bot over all 3 waves
 function play(seedPath) {
   const st = newState(seedPath);
+  st.gold = 2000;
   let placed = [];
   startWave(st);
   for (let i = 0; i < 60000; i++) {

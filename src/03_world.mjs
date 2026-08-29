@@ -152,7 +152,7 @@ export function buildMistLayers() {
     layers.push({ mesh: m, x0: x, sp: rng() * 0.35, ph: rng() * 10, size });
   }
   // soft vertical drift veils at the far edges only (very faint)
-  const farMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.24, depthWrite: false, fog: false, side: THREE.DoubleSide });
+  const farMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.16, depthWrite: false, fog: false, side: THREE.DoubleSide });
   for (const [x, y, z, size] of [[-30, 3.5, 0, 40], [30, 3.5, 0, 38], [0, 3.5, -32, 36], [0, 3.5, 32, 36]]) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size * 0.4), farMat.clone());
     m.position.set(x, y, z);

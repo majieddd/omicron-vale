@@ -1,4 +1,4 @@
-import { buildPath, newState, startWave, placeTower, upgradeTower, step, TOWERS, ENEMIES, WAVES, START_GOLD, WAVE_BONUS } from './src/02_sim.mjs';
+import { buildPath, newState, startWave, placeTower, upgradeTower, step, TOWERS, ENEMIES, WAVES, START_GOLD, WAVE_BONUS } from '../../src/02_sim.mjs';
 const path = buildPath([[-21, 6], [-13, 3.2], [-6.5, -1.8], [0, -0.6], [4.6, 2.2], [9.6, 0.8], [14.5, -1.6], [21, 0.2]]);
 function run(comps, upgradePlan=[]){ // comps: array of [kind,x,z]
   const s=newState(path); s.gold=START_GOLD;

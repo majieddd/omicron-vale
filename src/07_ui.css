@@ -81,7 +81,9 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
   color: var(--cream-soft);
 }
 .card .tname { font-size: 12px; line-height: 1.25; min-height: 30px; display: block; }
-.card .tcost { font-size: 13px; color: var(--gold); margin-top: 4px; display: block; }
+.card .tstats { font-size: 11px; color: var(--cream); display: block; }
+.card .tmech { font-size: 10px; color: var(--sage); display: block; margin-top: 1px; }
+.card .tcost { font-size: 13px; color: var(--gold); margin-top: 3px; display: block; }
 .card .tswatch {
   width: 34px; height: 13px; margin: 3px auto 5px; border-radius: 6px;
   border: 1px solid rgba(0,0,0,0.25); box-shadow: inset 0 1px 2px rgba(255,255,255,0.25);
@@ -126,6 +128,27 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
   text-shadow: 0 3px 14px rgba(30, 26, 16, 0.7), 0 1px 0 rgba(0,0,0,0.4);
 }
 #banner-sub { font-size: 17px; margin-top: 8px; color: var(--cream-soft); text-shadow: 0 2px 8px rgba(30,26,16,0.7); }
+
+/* ---------- boss bar ---------- */
+#bossbar {
+  position: absolute; top: 64px; left: 50%; transform: translateX(-50%);
+  width: min(430px, 70vw); text-align: center; pointer-events: none;
+}
+#bossbar.hidden { display: none; }
+#bossbar-name {
+  font-size: 15px; letter-spacing: 0.08em; color: var(--danger);
+  text-shadow: 0 2px 6px rgba(30,26,16,0.7); margin-bottom: 4px;
+}
+#bossbar-track {
+  height: 12px; border-radius: 7px; background: rgba(30, 26, 16, 0.55);
+  border: 1px solid var(--panel-border); overflow: hidden;
+  box-shadow: 0 3px 10px rgba(30,26,16,0.5);
+}
+#bossbar-fill {
+  height: 100%; width: 100%; border-radius: 6px;
+  background: linear-gradient(to bottom, #e08a7a, #c9553f);
+  transition: width 0.25s ease-out;
+}
 
 /* ---------- toast ---------- */
 #toast {

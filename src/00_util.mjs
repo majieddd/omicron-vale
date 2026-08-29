@@ -187,10 +187,10 @@ export function paintSky(w, h, rng) {
       g.fill();
     }
   }
-  // warm sun glow, upper right
+  // warm sun glow, upper right (kept subtle: bloom will not blow it to white)
   const sg = g.createRadialGradient(w * 0.72, h * 0.22, 6, w * 0.72, h * 0.22, w * 0.3);
-  sg.addColorStop(0, 'rgba(252,244,214,0.85)');
-  sg.addColorStop(0.35, 'rgba(246,235,201,0.35)');
+  sg.addColorStop(0, 'rgba(250,240,212,0.65)');
+  sg.addColorStop(0.4, 'rgba(246,235,201,0.22)');
   sg.addColorStop(1, 'rgba(246,235,201,0)');
   g.fillStyle = sg; g.fillRect(0, 0, w, h);
   g.globalAlpha = 1;
