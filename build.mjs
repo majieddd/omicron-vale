@@ -187,6 +187,15 @@ ${bundle}
 </script>`;
 });
 if (!replaced) { console.error('NO SCRIPT TAG REPLACED'); process.exit(1); }
+// inline the stylesheet: external absolute links break from file://
+const cssPath = join(ROOT, 'src', '07_ui.css');
+const css = readFileSync(cssPath, 'utf8');
+let cssReplaced = false;
+html = html.replace(/<link rel="stylesheet" href="\/src\/07_ui\.css">/, () => {
+  cssReplaced = true;
+  return `<style>\n${css}\n</style>`;
+});
+if (!cssReplaced) { console.error('NO CSS LINK REPLACED'); process.exit(1); }
 // strip importmap (single classic script needs none)
 html = html.replace(/<script type="importmap">[\s\S]*?<\/script>\s*/g, '');
 
@@ -204,4 +213,7 @@ try {
 }
 
 writeFileSync(join(ROOT, 'play.html'), html);
-console.log('WROTE play.html (' + html.length + ' bytes)');
+// final gate: no external references may remain (file:// proof)
+const extLink = /\<link[^>]*rel="stylesheet"|src="\/src\/|<script type="module"|type="importmap"/.test(html);
+if (extLink) { console.error('EXTERNAL REF REMAINS in play.html'); process.exit(1); }
+console.log('WROTE play.html (' + html.length + ' bytes)  -  no external refs');

@@ -34,26 +34,26 @@ For development: `node server.mjs` (http://127.0.0.1:8231), or `start.bat`.
 
 ## Verification
 
-- `node tests/sim.test.mjs` — determinism + winnability (green)
-- `node tests/balance.test.mjs` — regression: forge-pair autowin exploit dead,
+- `node tests/sim.test.mjs`  -  determinism + winnability (green)
+- `node tests/balance.test.mjs`  -  regression: forge-pair autowin exploit dead,
   boss leak cost / armor / slow-immune enforced, full roster winnable (green)
 - Live browser runs: zero console errors across full campaign; victory with
   the real 300g opening and mid-combat upgrades (verified via CDP)
-- `docs/shots/` — captured frames from every pass
+- `docs/shots/`  -  captured frames from every pass
 
 ## Structure
 
-- `src/02_sim.mjs` — pure logic (no DOM/THREE): path, waves, combat, economy
-- `src/00_util.mjs` — palette, procedural canvas textures (grass/thatch/
+- `src/02_sim.mjs`  -  pure logic (no DOM/THREE): path, waves, combat, economy
+- `src/00_util.mjs`  -  palette, procedural canvas textures (grass/thatch/
   planks/stone/sky/mist/paint-tooth)
-- `src/03_world.mjs` — terrain, road, sky dome, hills, mist layers
-- `src/04_props.mjs` — willow (merged strands), hut, rocks, trees, reeds,
+- `src/03_world.mjs`  -  terrain, road, sky dome, hills, mist layers
+- `src/04_props.mjs`  -  willow (merged strands), hut, rocks, trees, reeds,
   tufts (merged), fences
-- `src/05_units.mjs` — articulated enemies + towers, procedural animation
-- `src/06_fx.mjs` — particle pool, projectiles, bolts, rings, soul bursts
-- `src/07_audio.mjs` — fully synthesized WebAudio (no assets), compressor on
+- `src/05_units.mjs`  -  articulated enemies + towers, procedural animation
+- `src/06_fx.mjs`  -  particle pool, projectiles, bolts, rings, soul bursts
+- `src/07_audio.mjs`  -  fully synthesized WebAudio (no assets), compressor on
   the master bus, adaptive music
-- `src/08_main.mjs` — renderer (ACES, bloom), input, placement, entity sync,
+- `src/08_main.mjs`  -  renderer (ACES, bloom), input, placement, entity sync,
   event pipeline, HUD, test API (`window.__game`)
-- `build.mjs` — fuses ESM modules + vendored three.js into `play.html`
+- `build.mjs`  -  fuses ESM modules + vendored three.js into `play.html`
   (invariants: BUNDLE PARSE: OK, no `type="module"`, no import map)

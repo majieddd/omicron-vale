@@ -1,6 +1,6 @@
 # Change Notes
 
-## 2026-08-29 — Pass 5: adversarial review round, all findings fixed
+## 2026-08-29  -  Pass 5: adversarial review round, all findings fixed
 
 Reviewers: senior game designer + senior game developer, fresh-context fan-out
 (BOTH simulated the actual sim engine; their logs: docs/analysis/*.mjs).
@@ -51,7 +51,7 @@ Reviewers: senior game designer + senior game developer, fresh-context fan-out
 All fixes verified: node sim + balance tests green, live browser full campaign
 victory with 0 console errors (window.__ERRORS stays empty across waves).
 
-## 2026-08-29 — Pass 1..3: build, polish, batching
+## 2026-08-29  -  Pass 1..3: build, polish, batching
 
 - Initial painterly world (reference-matched palette), 3 waves, 5 towers,
   6 enemies + boss, procedural sound, fused single-file build.
