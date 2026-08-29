@@ -19,7 +19,7 @@ intentional eave/soffit geometry.
 
 ## Pipeline
 
-1. `tools/blender/make_assets.py` — headless Blender job (run with
+1. `tools/blender/make_assets.py`  -  headless Blender job (run with
    `blender --background --python tools/blender/make_assets.py`).
    Builds each asset from primitives, then:
    - `bpy.ops.object.join()` parts per asset (roof+walls, lamp+guard, ...)
@@ -28,15 +28,15 @@ intentional eave/soffit geometry.
    - flat shading + vertex colors (painterly style has no smooth normals)
    - export GLB (`export_scene.gltf(filepath, export_format='GLB',
      export_colors=True, export_apply=True)`)
-2. `src/09_assets.mjs` — loads GLB via THREE.GLTFLoader from
+2. `src/09_assets.mjs`  -  loads GLB via THREE.GLTFLoader from
    `assets/*.glb` (dev server) OR from the base64 payload fused into
    play.html (release). Registers material names so the game's animation
    factory looks up parts by name (torso, head, legL, ...).
-3. `src/04_props.mjs` / `src/05_units.mjs` — get `makeAsset(name)` that
+3. `src/04_props.mjs` / `src/05_units.mjs`  -  get `makeAsset(name)` that
    builds from the GLB if available; fall back to procedural primitives if
    not (the game must never regress to broken just because an asset is
    missing).
-4. `build.mjs` — inlines `assets/*.glb` as base64 data (single-file
+4. `build.mjs`  -  inlines `assets/*.glb` as base64 data (single-file
    guarantee kept: no external refs).
 
 ## Palette (same as game, for bpy constants)
