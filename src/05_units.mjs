@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { clamp, lerp, PAL } from './00_util.mjs';
 import { TOWERS, ENEMIES } from './02_sim.mjs';
+import { requestUnitBlenderAsset } from './09_assets.mjs';
 
 const DEG = Math.PI / 180;
 
@@ -545,6 +546,9 @@ export function makeTower(typeKey) {
     g.add(P.parts.orbLight);
     P.parts.cap = capMat;
   }
+  // Blender watertight body: replaces static meshes when parsed; animated
+  // P.parts (bow/drum/petals/orb/...) stay procedural and keep animating.
+  requestUnitBlenderAsset('tower-' + typeKey, g, P.parts);
   return P;
 }
 

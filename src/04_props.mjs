@@ -116,6 +116,32 @@ export function buildWillow(scale = 1) {
     strands.push(strand);
   }
   g.userData.strands = strands;
+  // Blender willow: on load, remove ALL procedural children (5 trunk segs,
+  // hub, 54 strand meshes) and keep the GLB. Its merged leaf curtain gets
+  // rewrapped in a crown-pivot group so the existing sway animation still
+  // reads as wind (rotation about the crown, not the trunk base).
+  requestBlenderAsset('willow', g, (inst) => {
+    const old = [];
+    for (const c of g.children) {
+      if (c !== inst) old.push(c);
+    }
+    for (const c of old) {
+      g.remove(c);
+      c.traverse((o) => { if (o.geometry) o.geometry.dispose?.(); });
+    }
+    let curtain = null;
+    inst.traverse((o) => { if (!curtain && o.name === 'leaf_strands') curtain = o; });
+    if (curtain) {
+      const pivot = new THREE.Group();
+      pivot.position.set(0, 3.5, 0);        // crown attach height (game units)
+      curtain.position.set(0, -3.5, 0);     // undo, so the mesh stays put
+      pivot.add(curtain);
+      inst.add(pivot);
+      g.userData.strands = [pivot];
+    } else {
+      g.userData.strands = [];
+    }
+  });
   return g;
 }
 

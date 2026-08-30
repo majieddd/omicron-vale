@@ -53,6 +53,37 @@ export function requestBlenderAsset(name, group, onReady) {
   return false;
 }
 
+// Swap-in for UNIT-style assets (towers/enemies): hide every scene child that
+// is NOT an animated part (parts record keeps animation code working), then
+// attach the Blender body. If no parts are given, hides ALL children.
+export function requestUnitBlenderAsset(name, group, parts, onReady) {
+  const keep = new Set();
+  const collect = (v) => {
+    if (v && v.isObject3D) keep.add(v);
+    else if (Array.isArray(v)) v.forEach(collect);
+    else if (v && typeof v === 'object') Object.values(v).forEach(collect);
+  };
+  collect(parts);
+  const apply = (inst) => {
+    const hidden = [];
+    group.traverse((o) => {
+      if (o === group || o === inst) return;
+      if (!(o.isMesh || o.isLine || o.isPoints)) return;
+      // keep if any ancestor (incl. self) is an animated part
+      for (let a = o; a && a !== group; a = a.parent) {
+        if (keep.has(a)) return;
+      }
+      hidden.push(o);
+    });
+    for (const h of hidden) h.visible = false;
+    group.add(inst);
+    if (onReady) onReady(inst);
+  };
+  if (ready[name]) { const inst = ready[name].clone(true); apply(inst); return true; }
+  pending.push({ name, group, onReady: apply });
+  return false;
+}
+
 // Called once at boot: decode all embedded GLBs.
 export function initBlenderAssets() {
   const map = window.__ASSET_GLB || {};
