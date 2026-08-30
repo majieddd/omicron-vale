@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { clamp, lerp, PAL } from './00_util.mjs';
 import { TOWERS, ENEMIES } from './02_sim.mjs';
-import { requestUnitBlenderAsset } from './09_assets.mjs';
+import { requestUnitBlenderAsset, requestUnitGeometries } from './09_assets.mjs';
 
 const DEG = Math.PI / 180;
 
@@ -53,16 +53,16 @@ export function makeEnemy(kind) {
     // floating spirit: teardrop body, two fluttering wing-fans, glowing core
     const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 1), mat(0xaacc60, { emissive: 0x7aa028, emissiveIntensity: 0.7 }));
     body.scale.set(0.8, 1.15, 0.8);
-    body.position.y = 0.75;
+    body.position.y = 0.75; body.name = "body";
     body.castShadow = true;
     g.add(body);
     const core = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), new THREE.MeshBasicMaterial({ color: 0xf5ffd0 }));
     core.position.y = 0.85;
     g.add(core);
     const wingMat = mat(0xd2e89a, { side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
-    const wl = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.8, 4), wingMat);
+    const wl = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.8, 4), wingMat); wl.name = "wl";
     wl.position.set(-0.34, 0.85, 0); wl.rotation.z = 1.05;
-    const wr = wl.clone(); wr.position.x = 0.34; wr.rotation.z = -1.05;
+    const wr = wl.clone(); wr.position.x = 0.34; wr.rotation.z = -1.05; wr.name = "wr";
     g.add(wl, wr);
     P.parts.wl = wl; P.parts.wr = wr; P.parts.body = body; P.parts.core = core;
     // tiny trailing dewdrops
@@ -73,18 +73,19 @@ export function makeEnemy(kind) {
     const shellM = mat(0x5f7f4a);
     const shell = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), shellM);
     shell.scale.set(1, 0.62, 1.25);
-    shell.position.y = 0.42;
+    shell.position.y = 0.42; shell.name = "shell";
     shell.castShadow = true;
     g.add(shell);
     // crown plates
     for (let i = 0; i < 3; i++) {
       const p = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.3, 4), mat(0x4c6a3c));
+      p.name = "crown" + i;
       p.position.set(0, 0.72 - i * 0.06, -0.15 + i * 0.34);
       p.rotation.x = -0.5;
       g.add(p);
     }
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 6, 5), mat(0x49663a));
-    head.position.set(0, 0.34, 0.62); head.castShadow = true;
+    head.position.set(0, 0.34, 0.62); head.castShadow = true; head.name = "head";
     g.add(head);
     const eyeM = new THREE.MeshBasicMaterial({ color: 0xf0ef9a });
     for (const s of [-1, 1]) {
@@ -99,8 +100,10 @@ export function makeEnemy(kind) {
         const hip = new THREE.Group();
         hip.position.set(s * 0.42, 0.4, -0.3 + i * 0.32);
         const up = limb(new THREE.CylinderGeometry(0.05, 0.05, 0.42, 5), legM, 0, -0.18, 0);
+        up.name = "legUp" + i + (s > 0 ? "R" : "L");
         up.rotation.z = s * 0.9;
         const low = limb(new THREE.CylinderGeometry(0.04, 0.03, 0.4, 5), legM, 0, -0.52, 0);
+        low.name = "legLow" + i + (s > 0 ? "R" : "L");
         low.rotation.z = -s * 0.5;
         hip.add(up, low);
         g.add(hip);
@@ -111,11 +114,11 @@ export function makeEnemy(kind) {
     // hopping cinder imp: charcoal body, flame plume, short legs, ember hands
     const bodyM = mat(0x3d3430, { emissive: 0x9a4a18, emissiveIntensity: 0.5 });
     const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 1), bodyM);
-    body.position.y = 0.55; body.scale.set(0.85, 1.1, 0.8);
+    body.position.y = 0.55; body.scale.set(0.85, 1.1, 0.8); body.name = "body";
     body.castShadow = true;
     g.add(body);
     const plume = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 5), new THREE.MeshBasicMaterial({ color: 0xf2a24b }));
-    plume.position.y = 1.05; plume.rotation.z = 0.12;
+    plume.position.y = 1.05; plume.rotation.z = 0.12; plume.name = "plume";
     g.add(plume);
     P.parts.plume = plume; P.parts.body = body;
     const legM = mat(0x2b2422);
@@ -136,10 +139,10 @@ export function makeEnemy(kind) {
     // briar wisp-walker: tall grass-blade body, curling thorn arms, hood head
     const bodyM = mat(0x9aa871);
     const body = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.5, 6), bodyM);
-    body.position.y = 0.95; body.castShadow = true;
+    body.position.y = 0.95; body.castShadow = true; body.name = "body";
     g.add(body);
     const hood = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 5), mat(0x7f8f58));
-    hood.position.y = 1.6; hood.scale.set(1, 0.8, 1);
+    hood.position.y = 1.6; hood.scale.set(1, 0.8, 1); hood.name = "hood";
     g.add(hood);
     const eyeM = new THREE.MeshBasicMaterial({ color: 0x3c4a2a });
     for (const s of [-1, 1]) {
@@ -153,8 +156,10 @@ export function makeEnemy(kind) {
       const arm = new THREE.Group();
       arm.position.set(s * 0.34, 1.25, 0);
       const a = limb(new THREE.CylinderGeometry(0.05, 0.035, 0.7, 5), armM, 0, -0.3, 0);
+      a.name = "armA" + (s > 0 ? "R" : "L");
       a.rotation.z = s * 0.65;
       const hand = limb(new THREE.ConeGeometry(0.12, 0.3, 4), mat(0x5d6b3d), 0, -0.72, 0);
+      hand.name = "armH" + (s > 0 ? "R" : "L");
       hand.rotation.z = Math.PI + s * 0.2;
       arm.add(a, hand);
       g.add(arm);
@@ -164,17 +169,19 @@ export function makeEnemy(kind) {
     // waddling mossback: low body, mossy dome, tusks, stub arms, tail
     const bodyM = mat(0x6e7a55);
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.6, 0.75), bodyM);
-    body.position.y = 0.5; body.castShadow = true;
+    body.position.y = 0.5; body.castShadow = true; body.name = "body";
     g.add(body);
     const dome = new THREE.Mesh(new THREE.IcosahedronGeometry(0.52, 1), mat(0x59653f));
-    dome.position.y = 0.75; dome.scale.set(1.15, 0.72, 0.95);
+    dome.position.y = 0.75; dome.scale.set(1.15, 0.72, 0.95); dome.name = "dome";
     dome.castShadow = true;
     g.add(dome);
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.3), mat(0x818e60));
+    head.name = "head";
     head.position.set(0, 0.52, 0.5); g.add(head);
     const tuskM = mat(0xcfc9b4);
     for (const s of [-1, 1]) {
       const t = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.22, 4), tuskM);
+      t.name = "tusk" + (s > 0 ? "R" : "L");
       t.position.set(s * 0.12, 0.58, 0.66);
       t.rotation.x = 1.9;
       g.add(t);
@@ -192,6 +199,7 @@ export function makeEnemy(kind) {
         const hip = new THREE.Group();
         hip.position.set(s * 0.42, 0.34, f * 0.3);
         const l = limb(new THREE.CylinderGeometry(0.09, 0.07, 0.36, 5), legM, 0, -0.16, 0);
+        l.name = "leg" + (s > 0 ? "R" : "L") + (f > 0 ? "F" : "B");
         hip.add(l); g.add(hip);
         legs.push({ hip, side: s, front: f });
       }
@@ -203,21 +211,27 @@ export function makeEnemy(kind) {
     const darkM = mat(0x6f7565, { roughness: 0.95 });
     const legs = [];
     const pelvis = limb(new THREE.BoxGeometry(1.7, 0.9, 1.2), darkM, 0, 1.5, 0);
+    pelvis.name = "pelvis";
     g.add(pelvis);
     for (const s of [-1, 1]) {
       const hip = new THREE.Group();
       hip.position.set(s * 0.62, 1.35, 0);
       const thigh = limb(new THREE.BoxGeometry(0.55, 1.3, 0.75), rockM, 0, -0.65, 0);
+      thigh.name = "thigh" + (s > 0 ? "R" : "L");
       const shin = limb(new THREE.CylinderGeometry(0.34, 0.46, 1.2, 5), darkM, 0, -1.85, 0);
+      shin.name = "shin" + (s > 0 ? "R" : "L");
       const foot = limb(new THREE.BoxGeometry(0.75, 0.5, 1.15), rockM, 0, -2.5, 0.28);
+      foot.name = "foot" + (s > 0 ? "R" : "L");
       hip.add(thigh, shin, foot);
       g.add(hip);
       legs.push({ hip, s });
     }
     const torso = limb(new THREE.BoxGeometry(2.3, 1.7, 1.4), rockM, 0, 2.85, -0.1);
+    torso.name = "torso";
     torso.rotation.x = -0.06;
     g.add(torso);
     const chestPlate = limb(new THREE.BoxGeometry(1.9, 0.7, 0.35), darkM, 0, 3.2, 0.6);
+    chestPlate.name = "plate";
     g.add(chestPlate);
     // glowing rift core
     const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 1), new THREE.MeshBasicMaterial({ color: 0xb7e8c9 }));
@@ -227,11 +241,13 @@ export function makeEnemy(kind) {
     // horn crown
     for (let i = 0; i < 5; i++) {
       const h = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.9 - Math.abs(i - 2) * 0.18, 4), darkM);
+      h.name = "horn" + i;
       h.position.set((i - 2) * 0.42, 3.95, -0.2);
       h.rotation.z = (i - 2) * 0.22;
       g.add(h);
     }
     const head = limb(new THREE.BoxGeometry(1.0, 0.7, 0.8), rockM, 0, 3.75, 0.35);
+    head.name = "head";
     g.add(head);
     const eyeM = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
     for (const s of [-1, 1]) {
@@ -244,7 +260,9 @@ export function makeEnemy(kind) {
       const arm = new THREE.Group();
       arm.position.set(s * 1.35, 2.9, 0);
       const sh = limb(new THREE.BoxGeometry(0.62, 1.5, 0.8), rockM, 0, -0.65, 0);
+      sh.name = "sh" + (s > 0 ? "R" : "L");
       const fist = limb(new THREE.IcosahedronGeometry(0.55, 1), darkM, 0, -1.6, 0.15);
+      fist.name = "fist" + (s > 0 ? "R" : "L");
       arm.add(sh, fist);
       g.add(arm);
       arms.push({ arm, s });
@@ -260,6 +278,7 @@ export function makeEnemy(kind) {
   hb.visible = false; // shown when damaged
   g.add(hb);
   P.parts.hpBar = hb;
+  requestUnitGeometries('enemy-' + kind, g);
   return P;
 }
 
@@ -396,12 +415,14 @@ export function makeTower(typeKey) {
     const bowM = mat(0x6b4f2e);
     const bow = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 5, 12, Math.PI * 1.2), bowM);
     bow.rotation.z = Math.PI * 0.9;
+    bow.name = "bow";
     bow.position.y = 2.62;
     g.add(bow);
     P.parts.bow = bow;
     const strMat = new THREE.LineBasicMaterial({ color: 0xe8e0c0 });
     const string = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0.6,0,0)]), strMat);
     P.parts.string = string;
+    string.name = "string";
     string.position.y = 2.62; string.position.x = -0.38;
     g.add(string);
     // leaves sprouting
@@ -425,6 +446,7 @@ export function makeTower(typeKey) {
     g.add(rim);
     const mouth = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.5, 6), mat(0x2f2b26));
     mouth.rotation.x = Math.PI / 2 + 0.5;
+    mouth.name = "mouth";
     mouth.position.set(0, 1.5, 0.35);
     g.add(mouth);
     const fireGlow = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff9b3e }));
@@ -435,7 +457,8 @@ export function makeTower(typeKey) {
     const drumM = mat(0x6e5138);
     const drum = new THREE.Group();
     const d1 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.18, 8), drumM);
-    const d2 = d1.clone(); d2.position.y = 0.28; d2.scale.setScalar(0.8);
+    d1.name = "drumD1";
+    const d2 = d1.clone(); d2.name = "drumD2"; d2.position.y = 0.28; d2.scale.setScalar(0.8);
     drum.add(d1, d2);
     drum.position.y = 2.0;
     drum.castShadow = true;
@@ -445,6 +468,7 @@ export function makeTower(typeKey) {
     P.parts.bellows = [];
     for (const s of [-1, 1]) {
       const b = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.5, 0.3), bellM);
+      b.name = "bellows" + (s > 0 ? "R" : "L");
       b.position.set(s * 0.5, 1.1, -0.2);
       b.rotation.z = s * 0.3;
       g.add(b);
@@ -457,6 +481,7 @@ export function makeTower(typeKey) {
     staff.position.y = 1.3; staff.castShadow = true;
     g.add(staff);
     const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 1), mat(0x9fd8e8, { emissive: 0x4a9ab5, emissiveIntensity: 0.7 }));
+    crown.name = "crown";
     crown.position.y = 2.35;
     g.add(crown);
     P.parts.crown = crown;
@@ -465,6 +490,7 @@ export function makeTower(typeKey) {
     for (let i = 0; i < 6; i++) {
       const pivot = new THREE.Group();
       const petal = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.7, 4), petalM);
+      petal.name = "petal";
       petal.rotation.z = -Math.PI / 2;
       petal.position.y = 0.3;
       pivot.add(petal);
@@ -474,6 +500,7 @@ export function makeTower(typeKey) {
       P.parts.petals.push(pivot);
     }
     const drip = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 4), mat(0x9fd8e8, { emissive: 0x4a9ab5, emissiveIntensity: 0.5 }));
+    drip.name = "drip";
     drip.position.set(0, 0.4, 0);
     g.add(drip);
     P.parts.drip = drip;
@@ -490,9 +517,11 @@ export function makeTower(typeKey) {
       tripod.add(leg);
     }
     const skinTop = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.1, 9), mat(0xd8cbb0));
+    skinTop.name = "skin";
     skinTop.position.y = 1.52;
     tripod.add(skinTop);
     const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.66, 0.5, 9), mat(0x68523c));
+    drum.name = "drum";
     drum.position.y = 1.28;
     tripod.add(drum);
     g.add(tripod);
@@ -507,6 +536,7 @@ export function makeTower(typeKey) {
     const arm = new THREE.Group();
     const a1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.7, 5), wood);
     const mace = new THREE.Mesh(new THREE.SphereGeometry(0.13, 6, 5), mat(0x3f3b35));
+    a1.name = "armHandle"; mace.name = "mace";
     a1.position.y = 0.35; mace.position.y = 0.75;
     arm.add(a1, mace);
     arm.position.x = 0.55;
@@ -533,9 +563,11 @@ export function makeTower(typeKey) {
       g.add(bar);
     }
     const cageTop = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.3, 6), cageM);
+    cageTop.name = "cageTop";
     cageTop.position.y = 2.75;
     g.add(cageTop);
     const orb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffd98a }));
+    orb.name = "orb";
     orb.position.y = 2.38;
     g.add(orb);
     P.parts.orb = orb;
@@ -549,6 +581,7 @@ export function makeTower(typeKey) {
   // Blender watertight body: replaces static meshes when parsed; animated
   // P.parts (bow/drum/petals/orb/...) stay procedural and keep animating.
   requestUnitBlenderAsset('tower-' + typeKey, g, P.parts);
+  requestUnitGeometries('tower-' + typeKey + '-parts', g);
   return P;
 }
 

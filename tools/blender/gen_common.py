@@ -146,9 +146,9 @@ def lathe(name, mat, profile, seg=10, noise=0.0, seed=7, rx=0.0, ry=0.0, rz=0.0,
     vs = transform(vs, cx, cy, cz, rx, ry, rz)
     return _mesh_obj(name, vs, fs, mat)
 
-def cone2(name, mat, cx, cy, cz, r, h, seg=6, rx=0.0, ry=0.0, rz=0.0):
+def cone2(name, mat, cx, cy, cz, r, h, seg=6, rx=0.0, ry=0.0, rz=0.0, noise=0.0, seed=1):
     return lathe(name, mat, [(r, 0.0), (0.0001, h)], seg=seg, rx=rx, ry=ry, rz=rz,
-                 cx=cx, cy=cy, cz=cz)
+                 cx=cx, cy=cy, cz=cz, noise=noise, seed=seed)
 
 def cone_frustum(name, mat, cx, cy, cz, r_bot, r_top, h, seg=6, rx=0.0, ry=0.0, rz=0.0):
     return lathe(name, mat, [(r_bot, 0.0), (r_top, h)], seg=seg, rx=rx, ry=ry, rz=rz,

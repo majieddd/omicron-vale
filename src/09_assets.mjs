@@ -33,7 +33,45 @@ function applyGameTextures(root) {
 const pending = [];      // { name, group, onReady }
 const ready = {};        // name -> GLTF scene root (cloned per use)
 const geos = {};         // name -> [{ name, geometry }] normalized to unit radius
+const nodeGeos = {};     // name -> Map(nodeName -> geometry) UNSCALED (unit parts swap)
 let started = false;
+
+// Extract geometry per named node for unit-part swaps (geometry-only swap keeps
+// the game's own materials/transforms/animations).
+function indexNodeGeos(name, root) {
+  const m = new Map();
+  root.traverse((o) => {
+    if (o.isMesh && o.name) {
+      const key = o.name.replace(/\.\d+$/, '');  // Blender may dedup-suffix (.001)
+      m.set(key, o.geometry);
+    }
+  });
+  if (m.size) nodeGeos[name] = m;
+}
+
+export function getNodeGeometries(name) {
+  return nodeGeos[name] || null;
+}
+
+// Geometry-only swap: every mesh in `group` whose name matches a GLB node
+// gets that node's geometry (materials and transforms stay game-side).
+export function requestUnitGeometries(name, group) {
+  const apply = (inst) => {
+    const map = nodeGeos[name];
+    if (!map) return;
+    group.traverse((o) => {
+      if (o.isMesh && map.has(o.name)) {
+        o.geometry = map.get(o.name);
+        o.material.needsUpdate = true;
+        o.castShadow = true;
+      }
+    });
+    if (inst) inst.traverse(() => {}); // noop; nodes already consumed
+  };
+  if (ready[name]) { apply(null); return true; }
+  pending.push({ name, group, onReady: apply });
+  return false;
+}
 
 // Extract per-node geometries from a parsed asset, normalized to UNIT radius
 // (max horizontal extent = 2.0 so a mesh can be scaled by (size, size, size)).
@@ -135,6 +173,7 @@ export function initBlenderAssets() {
         });
         ready[name] = root;
         indexGeos(name, root);
+        indexNodeGeos(name, root);
         // flush pending groups holding this name
         for (let i = pending.length - 1; i >= 0; i--) {
           const p = pending[i];
