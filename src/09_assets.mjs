@@ -32,7 +32,30 @@ function applyGameTextures(root) {
 
 const pending = [];      // { name, group, onReady }
 const ready = {};        // name -> GLTF scene root (cloned per use)
+const geos = {};         // name -> [{ name, geometry }] normalized to unit radius
 let started = false;
+
+// Extract per-node geometries from a parsed asset, normalized to UNIT radius
+// (max horizontal extent = 2.0 so a mesh can be scaled by (size, size, size)).
+function indexGeos(name, root) {
+  const list = [];
+  root.traverse((o) => {
+    if (o.isMesh) {
+      const g = o.geometry.clone();
+      g.computeBoundingSphere();
+      const r = Math.max(g.boundingSphere.radius, 1e-6);
+      g.scale(1 / r, 1 / r, 1 / r);
+      list.push({ name: o.name || o.parent?.name || 'mesh', geometry: g });
+    }
+  });
+  list.sort((a, b) => a.name.localeCompare(b.name));
+  if (list.length) geos[name] = list;
+}
+
+// Returns cached unit-radius geometries for an asset (or [] if not ready yet).
+export function getBlenderGeometries(name) {
+  return geos[name] || [];
+}
 
 export function makeBlenderAsset(name) {
   const g = new THREE.Group();
@@ -111,6 +134,7 @@ export function initBlenderAssets() {
           }
         });
         ready[name] = root;
+        indexGeos(name, root);
         // flush pending groups holding this name
         for (let i = pending.length - 1; i >= 0; i--) {
           const p = pending[i];

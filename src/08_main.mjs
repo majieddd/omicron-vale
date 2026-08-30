@@ -8,11 +8,11 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildPath, newState, startWave, placeTower, upgradeTower, sellTower, step as simStep, TOWERS, WAVES } from './02_sim.mjs';
 import { clamp, lerp } from './00_util.mjs';
 import { buildWorldScene, groundHeight, buildSky, buildHills, buildMistLayers } from './03_world.mjs';
-import { buildProps, animateProps } from './04_props.mjs';
+import { buildProps, animateProps, useBlenderRocks } from './04_props.mjs';
 import { makeEnemy, animateEnemy, makeTower, animateTower, updateHpBar } from './05_units.mjs';
 import { makeFXPools, makeProjectileMesh, makeBolt, makeBlastRing, makeIceRing, makeSoulBurst } from './06_fx.mjs';
 import { createAudio } from './07_audio.mjs';
-import { initBlenderAssets } from './09_assets.mjs';
+import { initBlenderAssets, getBlenderGeometries } from './09_assets.mjs';
 import { distToPath } from './02_sim.mjs';
 const distToPathSafe = (x, z) => distToPath(sim.path, x, z);
 
@@ -735,7 +735,9 @@ function boot() {
   buildCards();
   updateHud();
   updatePanel();
-  initBlenderAssets(); // async swap-in of Blender GLB assets (optional enhancement)
+  initBlenderAssets().then(() => { // async swap-in of Blender GLB assets
+    useBlenderRocks(getBlenderGeometries('rocks'));
+  });
   document.getElementById('boot').classList.add('gone');
   window.__READY = true;
 }

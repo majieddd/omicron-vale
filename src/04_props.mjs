@@ -234,22 +234,51 @@ export function buildHut() {
   return g;
 }
 
-// ---------- Faceted boulders ----------
+// Blender rock variants (watertight, welded icospheres). The game's
+// IcosahedronGeometry(size,1) is NON-INDEXED in three.js, so per-vertex
+// jitter tears shared corners apart -> crack shards. Blender rocks stay
+// connected. Falls back to the old procedural rock if not parsed yet.
+let rockVariants = [];  // unit-radius BufferGeometries, filled when rocks.glb parses
+const rockRegistry = []; // { mesh, size } - every rock created (swap-able post-parse)
 export function makeRock(size, color) {
-  const geo = new THREE.IcosahedronGeometry(size, 1);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const v = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
-    const s = 1 + (rng() - 0.5) * 0.34;
-    v.multiplyScalar(s);
-    v.y *= 0.72; // settled, low-slung
-    pos.setXYZ(i, v.x, v.y, v.z);
+  let geo;
+  if (rockVariants.length) {
+    const src = rockVariants[rockRegistry.length % rockVariants.length];
+    geo = src.geometry.clone();
+    geo.scale(size, size, size);
+  } else {
+    geo = new THREE.IcosahedronGeometry(size, 1);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const v = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
+      const s = 1 + (rng() - 0.5) * 0.34;
+      v.multiplyScalar(s);
+      v.y *= 0.72; // settled, low-slung
+      pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    geo.computeVertexNormals();
   }
-  geo.computeVertexNormals();
   const mat = std(color, { roughness: 0.92 });
   const m = new THREE.Mesh(geo, mat);
   m.castShadow = true; m.receiveShadow = true;
+  m.userData.isRock = true;
+  rockRegistry.push({ mesh: m, size });
   return m;
+}
+
+// Called once when rocks.glb parses: swaps EVERY rock (incl. ones created
+// before parse) onto a watertight Blender variant. Color/material untouched.
+export function useBlenderRocks(list) {
+  if (!list || !list.length) return;
+  rockVariants = list;
+  for (let i = 0; i < rockRegistry.length; i++) {
+    const entry = rockRegistry[i];
+    const src = list[i % list.length];
+    const g = src.geometry.clone();
+    g.scale(entry.size, entry.size, entry.size);
+    entry.mesh.geometry.dispose();
+    entry.mesh.geometry = g;
+  }
 }
 
 export function buildRockField() {
