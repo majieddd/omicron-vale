@@ -79150,8 +79150,28 @@ const { mulberry32, clamp, lerp, PAL, paintGrass, paintSky, paintMistPuff, canva
 const WORLD = {
   w: 46,   // x extent
   h: 34,   // z extent
+  // Small-planet curvature: the map is the top cap of a planet of radius R_P.
+  // capY(r) = sqrt(R_P^2 - r^2) - R_P (negative at r>0), so edges drop away.
+  R_P: 80,
+  // the planet sphere rides this much below the terrain cap (crust thickness)
+  CRUST: 0.5,
   pathCtrl: [[-21, 6], [-13, 3.2], [-6.5, -1.8], [0, -0.6], [4.6, 2.2], [9.6, 0.8], [14.5, -1.6], [21, 0.2]]
 };
+
+// Height of the planet surface at horizontal distance r from the map center.
+function capY(r) {
+  const R = WORLD.R_P;
+  const rr = Math.min(r, R - 0.01);
+  return Math.sqrt(R * R - rr * rr) - R;
+}
+
+// Unit surface normal at horizontal (x, z) on the cap (points away from center).
+function sphereNormal(x, z, out) {
+  const R = WORLD.R_P;
+  const c = capY(Math.hypot(x, z)) + R;   // sqrt(R^2 - r^2)
+  out.set(x / R, c / R, z / R);
+  return out.normalize();
+}
 
 function buildPathGeometry() {
   const p = buildPath(WORLD.pathCtrl);
@@ -79173,16 +79193,19 @@ function makeNoise2D(seed) {
 }
 
 function groundHeight(x, z, path, noise) {
+  const r = Math.hypot(x, z);
   let h = noise(x * 0.16, z * 0.16) * 1.5 + noise(x * 0.45, z * 0.45) * 0.5 - 0.65;
   // flatten along the road corridor
   const d = distToPath(path, x, z);
   const f = clamp(d / 2.6, 0, 1);
   h *= lerp(0.06, 1, f * f * (3 - 2 * f));
-  // gentle bowl: edges rise into hills
-  const ex = clamp((Math.abs(x) - WORLD.w * 0.36) / 5, 0, 1);
-  const ez = clamp((Math.abs(z) - WORLD.h * 0.34) / 4.5, 0, 1);
-  h += (ex * ex * 2.1 + ez * ez * 1.4) * (0.4 + noise(x * 0.3, z * 0.3) * 0.6);
-  return h;
+  // stay on/above the planet surface: local bumps only add, never dig in
+  if (h < 0) h = 0;
+  // fade local detail to zero near the map edge so terrain meets the planet sphere seamlessly
+  const ef = clamp(Math.min(WORLD.w / 2 - Math.abs(x), WORLD.h / 2 - Math.abs(z)) / 5, 0, 1);
+  h *= ef;
+  // small-planet curvature: the whole map is a cap of the planet
+  return capY(r) + h;
 }
 
 function buildTerrain(path, noise) {
@@ -79197,6 +79220,7 @@ function buildTerrain(path, noise) {
   const tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
+    const r = Math.hypot(x, z);
     const y = groundHeight(x, z, path, noise);
     pos.setY(i, y);
     // color
@@ -79213,11 +79237,9 @@ function buildTerrain(path, noise) {
       const dirt = new THREE.Color(cDirt).lerp(cDirtDk, n * 0.55);
       tmp.lerp(dirt, 0.7 * (1 - t));
     }
-    // hill shade
-    const ex = clamp((Math.abs(x) - WORLD.w * 0.36) / 5, 0, 1);
-    const ez = clamp((Math.abs(z) - WORLD.h * 0.34) / 4.5, 0, 1);
-    const rise = Math.max(ex, ez);
-    if (rise > 0.15) tmp.lerp(new THREE.Color(PAL.grassLo), rise * 0.5).lerp(new THREE.Color(0x7a8055), Math.max(0, rise - 0.5) * 0.8);
+    // hill shade: blend toward the planet's outer grass band near the rim
+    const rim = clamp((r - WORLD.w * 0.5) / 9, 0, 1);
+    if (rim > 0.02) tmp.lerp(cGrassLo, rim * 0.55).lerp(new THREE.Color(0x6f7a4a), Math.min(1, rim * 0.7));
     colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -79248,33 +79270,93 @@ function buildSky() {
   return sky;
 }
 
-// Distant hills: dark faceted cones at the horizon (referenced silhouette band).
+// ---------- The planet ball ----------
+// The map is the top cap; this sphere continues the surface out and down.
+function buildPlanetBall() {
+  const R = WORLD.R_P;
+  const rng = mulberry32(424242);
+  const tex = canvasTexture(paintPlanet(1024, 512, rng, R));
+  tex.wrapS = THREE.RepeatWrapping;
+  const geo = new THREE.SphereGeometry(R, 96, 48);
+  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 1.0, metalness: 0.0 });
+  const ball = new THREE.Mesh(geo, mat);
+  ball.position.set(0, -(R + WORLD.CRUST), 0);   // crust: ball rides CRUST below the cap
+  ball.name = 'planet';
+  return ball;
+}
+
+function paintPlanet(w, h, rng, R) {
+  const c = makeCanvas(w, h);
+  const g = c.getContext('2d');
+  // sage top fading to warm olive + stone bands low on the ball (painterly)
+  const grd = g.createLinearGradient(0, 0, 0, h);
+  grd.addColorStop(0.00, '#97a163');
+  grd.addColorStop(0.22, '#8a9a5c');
+  grd.addColorStop(0.45, '#7f8a52');
+  grd.addColorStop(0.70, '#6d7844');
+  grd.addColorStop(0.90, '#5c6838');
+  grd.addColorStop(1.00, '#4f5a30');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, w, h);
+  // mottled patches (grass noise at planet scale)
+  for (let i = 0; i < 2600; i++) {
+    const x = rng() * w, y = rng() * h;
+    const s = 2 + rng() * 9;
+    const v = 0.88 + rng() * 0.30;
+    g.fillStyle = `rgba(${(140 * v + 20) | 0}, ${(150 * v + 16) | 0}, ${(90 * v + 12) | 0}, ${0.16 + rng() * 0.15})`;
+    g.fillRect(x, y, s, s * (0.5 + rng() * 0.8));
+  }
+  // stone streaks / ledges lower on the ball
+  for (let i = 0; i < 320; i++) {
+    const y = h * (0.55 + rng() * 0.42);
+    const x = rng() * w;
+    g.strokeStyle = `rgba(92, 99, 66, ${0.10 + rng() * 0.14})`;
+    g.lineWidth = 1 + rng() * 4;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.quadraticCurveTo(x + rng() * 60 - 30, y + rng() * 10 - 5, x + rng() * 120 - 60, y + rng() * 14 - 7);
+    g.stroke();
+  }
+  return c;
+}
+
+// Distant hills that sit ON the planet's surface (tilted to the local normal).
 function buildHills() {
   const rng = mulberry32(31337);
+  const R = WORLD.R_P;
   const group = new THREE.Group();
   group.name = 'hills';
   const mat = new THREE.MeshBasicMaterial({ color: 0x8f957f, fog: true });
   const matFar = new THREE.MeshBasicMaterial({ color: 0xa6ab94, fog: true });
+  const up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < 34; i++) {
     const ang = (i / 34) * Math.PI * 2 + rng() * 0.2;
-    const r = 95 + rng() * 30;
+    const rr = R - (6 + rng() * 14);          // distance from pole, on the ball
     const hgt = 6 + rng() * 16;
     const geo = new THREE.ConeGeometry(7 + rng() * 14, hgt, 5 + ((rng() * 3) | 0));
     const m = new THREE.Mesh(geo, rng() > 0.5 ? mat : matFar);
-    m.position.set(Math.cos(ang) * r, hgt * 0.5 - 8, Math.sin(ang) * r);
-    m.rotation.y = rng() * Math.PI;
+    const x = Math.cos(ang) * rr, z = Math.sin(ang) * rr;
+    const y = Math.sqrt(Math.max(0.001, R * R - rr * rr)) - R;
+    m.position.set(x, y + hgt * 0.5 - 1.2, z);
+    // upright along the local surface normal
+    const n = new THREE.Vector3(x, y + R, z).normalize();
+    m.quaternion.setFromUnitVectors(up, n);
     group.add(m);
     // flat dark conifer silhouettes on nearer hills
     if (rng() > 0.4) {
       const cb = new THREE.Mesh(new THREE.ConeGeometry(2 + rng() * 2.5, 5 + rng() * 7, 4), matFar);
-      cb.position.set(Math.cos(ang) * (r - 22), hgt * 0.3 - 6.5, Math.sin(ang) * (r - 22));
+      const x2 = Math.cos(ang) * (rr - 16), z2 = Math.sin(ang) * (rr - 16);
+      const y2 = Math.sqrt(Math.max(0.001, R * R - (rr - 16) * (rr - 16))) - R;
+      const n2 = new THREE.Vector3(x2, y2 + R, z2).normalize();
+      cb.position.set(x2, y2 + 2.0, z2);
+      cb.quaternion.setFromUnitVectors(up, n2);
       group.add(cb);
     }
   }
   return group;
 }
 
-function buildMistLayers() {
+function buildMistLayers(path, noise) {
   const rng = mulberry32(4242);
   const group = new THREE.Group();
   group.name = 'mist';
@@ -79282,7 +79364,8 @@ function buildMistLayers() {
   tex.wrapS = THREE.ClampToEdgeWrapping; tex.wrapT = THREE.ClampToEdgeWrapping;
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.5, depthWrite: false, fog: false });
   const layers = [];
-  // Flat ground-haze sheets (rotateX -90) that drift like the reference's low mist.
+  const gh = (x, z) => groundHeight(x, z, path, noise);
+  // Low ground-haze sheets that follow the curved surface (drift in update loop).
   const spots = [
     [-24, 1.2, -10, 34], [-24, 1.6, 7, 30], [-10, 0.9, -15, 26], [6, 1.2, -16, 30],
     [22, 1.4, -11, 26], [24, 1.0, 6, 30], [0, 0.8, 17, 26]
@@ -79290,7 +79373,7 @@ function buildMistLayers() {
   for (const [x, y, z, size] of spots) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size * 0.42), mat.clone());
     m.rotation.x = -Math.PI / 2;
-    m.position.set(x, y, z);
+    m.position.set(x, gh(x, z) + y, z);
     m.name = 'mistLayer';
     group.add(m);
     layers.push({ mesh: m, x0: x, sp: rng() * 0.35, ph: rng() * 10, size });
@@ -79299,7 +79382,7 @@ function buildMistLayers() {
   const farMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.16, depthWrite: false, fog: false, side: THREE.DoubleSide });
   for (const [x, y, z, size] of [[-30, 3.5, 0, 40], [30, 3.5, 0, 38], [0, 3.5, -32, 36], [0, 3.5, 32, 36]]) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size * 0.4), farMat.clone());
-    m.position.set(x, y, z);
+    m.position.set(x, capY(Math.hypot(x, z)) + y, z);
     const side = Math.abs(x) > 20;
     if (side) m.rotation.y = Math.PI / 2; // face inward on the sides
     m.name = 'mistVeil';
@@ -79316,10 +79399,11 @@ function buildWorldScene() {
   g.name = 'world';
   const terrain = buildTerrain(path, noise);
   g.add(terrain);
+  g.add(buildPlanetBall());
   return { group: g, path, noise, terrain };
 }
 
-MOD["C:\\Users\\Majied LaFleur\\omicron-vale\\src\\03_world.mjs"] = ({ WORLD, buildPathGeometry, makeNoise2D, groundHeight, buildTerrain, buildSky, buildHills, buildMistLayers, buildWorldScene });
+MOD["C:\\Users\\Majied LaFleur\\omicron-vale\\src\\03_world.mjs"] = ({ WORLD, capY, sphereNormal, buildPathGeometry, makeNoise2D, groundHeight, buildTerrain, buildSky, buildPlanetBall, buildHills, buildMistLayers, buildWorldScene });
 })();(function(){ "use strict";
 const { BufferAttribute, BufferGeometry, Float32BufferAttribute, InstancedBufferAttribute, InterleavedBuffer, InterleavedBufferAttribute, TriangleFanDrawMode, TriangleStripDrawMode, TrianglesDrawMode, Vector3 } = MOD["C:\\Users\\Majied LaFleur\\omicron-vale\\vendor\\three.module.js"];
 
@@ -85759,9 +85843,13 @@ MOD["C:\\Users\\Majied LaFleur\\omicron-vale\\src\\09_assets.mjs"] = ({ getNodeG
 // Props: the diorama flock. Willow, thatched hut, faceted boulders, trees, fences, reeds, cairns.
 const THREE = MOD["C:\\Users\\Majied LaFleur\\omicron-vale\\vendor\\three.module.js"];
 const { mulberry32, clamp, lerp, PAL, paintThatch, paintPlanks, paintStone, paintGrass, canvasTexture } = MOD["C:\\Users\\Majied LaFleur\\omicron-vale\\src\\00_util.mjs"];
-const { makeNoise2D } = MOD["C:\\Users\\Majied LaFleur\\omicron-vale\\src\\03_world.mjs"];
+const { makeNoise2D, groundHeight } = MOD["C:\\Users\\Majied LaFleur\\omicron-vale\\src\\03_world.mjs"];
 
 const rng = mulberry32(20260829);
+
+// Context set by buildProps: every prop anchors to the curved ground via this.
+const PROP = { path: null, noise: null };
+function gy(x, z) { return groundHeight(x, z, PROP.path, PROP.noise); }
 
 function std(color, opts = {}) {
   return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.95, metalness: 0, flatShading: true }, opts));
@@ -86055,7 +86143,7 @@ function buildRockField() {
   ];
   for (const [x, y, z, s] of spots) {
     const r = makeRock(s, colors[(rng() * colors.length) | 0]);
-    r.position.set(x, y * 0.8, z);
+    r.position.set(x, groundHeight(x, z, PROP.path, PROP.noise) + y * 0.8, z);
     r.rotation.y = rng() * Math.PI * 2;
     g.add(r);
   }
@@ -86119,7 +86207,7 @@ function buildTreefield() {
   let i = 0;
   for (const [x, z, s] of spots) {
     const t = buildTree(kinds[i++ % kinds.length]);
-    t.position.set(x, 0, z);
+    t.position.set(x, gy(x, z), z);
     t.scale.setScalar(s);
     g.add(t);
   }
@@ -86133,10 +86221,11 @@ function buildReeds() {
   const mat = new THREE.MeshStandardMaterial({ color: 0xb3a36c, roughness: 1, flatShading: true, side: THREE.DoubleSide });
   const dark = new THREE.MeshStandardMaterial({ color: 0x8a7f4f, roughness: 1, flatShading: true, side: THREE.DoubleSide });
   const cluster = (x, z, n, size) => {
+    const gyC = gy(x, z);
     for (let i = 0; i < n; i++) {
       const h = size * (0.7 + rng() * 0.5);
       const s = new THREE.Mesh(new THREE.ConeGeometry(0.05, h, 3), rng() > 0.4 ? mat : dark);
-      s.position.set(x + (rng() - 0.5) * 0.5, h / 2, z + (rng() - 0.5) * 0.5);
+      s.position.set(x + (rng() - 0.5) * 0.5, gyC + h / 2, z + (rng() - 0.5) * 0.5);
       s.rotation.z = (rng() - 0.5) * 0.22;
       g.add(s);
     }
@@ -86165,7 +86254,7 @@ function buildGrassTufts() {
       const h = 0.25 + rng() * 0.45;
       eul.set(0, 0, (rng() - 0.5) * 0.35);
       q.setFromEuler(eul);
-      m4.compose(pos.set(x + (rng() - 0.5) * 0.4, h / 2, z + (rng() - 0.5) * 0.4), q, scl.set(1, h, 1));
+      m4.compose(pos.set(x + (rng() - 0.5) * 0.4, gy(x, z) + h / 2, z + (rng() - 0.5) * 0.4), q, scl.set(1, h, 1));
       parts.push({ geo: bladeGeo, matrix: m4.clone(), color: rng() > 0.5 ? cMid : cHi });
     }
   }
@@ -86187,7 +86276,7 @@ function buildFences() {
       const z = lerp(z0, z1, t);
       const h = 1.15 + (rng() - 0.5) * 0.2;
       const p = new THREE.Mesh(new THREE.BoxGeometry(0.12, h, 0.12), postMat);
-      p.position.set(x, h / 2, z);
+      p.position.set(x, gy(x, z) + h / 2, z);
       p.rotation.z = (rng() - 0.5) * 0.16;
       p.castShadow = true;
       g.add(p);
@@ -86198,12 +86287,13 @@ function buildFences() {
       const xb = lerp(x0, x1, (i + 1) / n), zb = lerp(z0, z1, (i + 1) / n);
       const len = Math.hypot(xb - xa, zb - za) + 0.15;
       const rim = new THREE.Mesh(new THREE.BoxGeometry(len, 0.09, 0.09), postMat);
-      rim.position.set((xa + xb) / 2, 0.62, (za + zb) / 2);
+      const midG = gy((xa + xb) / 2, (za + zb) / 2);
+      rim.position.set((xa + xb) / 2, midG + 0.62, (za + zb) / 2);
       rim.rotation.y = Math.atan2(-(zb - za), xb - xa);
       rim.rotation.z = 0.02;
       g.add(rim);
       const rim2 = rim.clone();
-      rim2.position.y = 0.95;
+      rim2.position.y = midG + 0.95;
       g.add(rim2);
     }
   };
@@ -86213,14 +86303,15 @@ function buildFences() {
   return g;
 }
 
-function buildProps() {
+function buildProps(path, noise) {
+  PROP.path = path; PROP.noise = noise;
   const g = new THREE.Group();
   g.name = 'props';
   const willow = buildWillow(1.15);
-  willow.position.set(-5.6, 0, -0.6); // mid-ground hero, near path center-left
+  willow.position.set(-5.6, gy(-5.6, -0.6), -0.6); // mid-ground hero, near path center-left
   g.add(willow);
   const hut = buildHut();
-  hut.position.set(18.8, 0, -0.4);  // at the path end = the hearth
+  hut.position.set(18.8, gy(18.8, -0.4), -0.4);  // at the path end = the hearth
   hut.rotation.y = -Math.PI / 2 + 0.06;
   g.add(hut);
   g.add(buildRockField());
@@ -86229,7 +86320,7 @@ function buildProps() {
   g.add(buildGrassTufts());
   g.add(buildFences());
   const cairn = buildCairn();
-  cairn.position.set(-2.2, 0, 6.4);
+  cairn.position.set(-2.2, gy(-2.2, 6.4), 6.4);
   g.add(cairn);
   return g;
 }
@@ -87376,7 +87467,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xd9d3ba);
-scene.fog = new THREE.Fog(0xe3ddc2, 34, 95);
+scene.fog = new THREE.Fog(0xe3ddc2, 38, 165);
 
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 400);
 camera.position.set(0, 30, 30);
@@ -87408,13 +87499,13 @@ scene.add(rim);
 // ---------- world ----------
 const world = buildWorldScene();
 scene.add(world.group);
-const props = buildProps();
+const props = buildProps(world.path, world.noise);
 scene.add(props);
 const sky = buildSky();
 scene.add(sky);
 const hills = buildHills();
 scene.add(hills);
-const mist = buildMistLayers();
+const mist = buildMistLayers(world.path, world.noise);
 scene.add(mist.group);
 
 // ---------- fx ----------
@@ -87547,9 +87638,17 @@ function screenToGround(ev) {
   mouse.x = (ev.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(ev.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
-  const hit = raycaster.ray.intersectPlane(groundPlane, groundPt);
-  if (!hit) return null;
-  return { x: groundPt.x, z: groundPt.z };
+  // The ground is the planet cap (sphere at (0,-(R+CRUST),0), radius R).
+  // Ray-sphere shoot: keeps clicks true to the curved surface.
+  const o = raycaster.ray.origin, d = raycaster.ray.direction;
+  const c = new THREE.Vector3(0, -(WORLD.R_P + WORLD.CRUST), 0);
+  const L = new THREE.Vector3().subVectors(o, c);
+  const b = L.dot(d);
+  const disc = b * b - (L.lengthSq() - WORLD.R_P * WORLD.R_P);
+  if (disc < 0) return null;               // ray misses the planet
+  const t = -b - Math.sqrt(disc);
+  if (t < 0) return null;                  // intersection behind the camera
+  return { x: o.x + d.x * t, z: o.z + d.z * t };
 }
 
 // hover ghost update
@@ -87750,7 +87849,7 @@ function syncEnemies(dt) {
     }
     v.P.group.position.x = e.x;
     v.P.group.position.z = e.z;
-    v.P.group.position.y = 0;
+    v.P.group.position.y = groundHeight(e.x, e.z, sim.path, world.noise);
     // ease-rotate toward travel direction; stalker sway is applied to body, not group
     v.P.group.rotation.y += shortestAngle(v.P.group.rotation.y, e.face) * Math.min(1, dt * 6);
     animateEnemy(v.P, e, renderTime);
@@ -87791,15 +87890,15 @@ function spawnDeathBurst(id, v) {
     kind === 'beetle' ? [0x6f9d55, 0x9fce6a] :
     kind === 'stalker' ? [0xb7c49b, 0x86935f] :
     [0x87956a, 0xa5b475];
-  fx.burst(x, 0.7, z, { colors, count: kind === 'boss' ? 42 : 20, speed: kind === 'boss' ? 6.5 : 3.6, up: 2.4, life: 0.85, size: 10, grav: 7 });
+  fx.burst(x, groundHeight(x, z, sim.path, world.noise) + 0.7, z, { colors, count: kind === 'boss' ? 42 : 20, speed: kind === 'boss' ? 6.5 : 3.6, up: 2.4, life: 0.85, size: 10, grav: 7 });
   const soul = makeSoulBurst(colors[0]);
-  soul.mesh.position.set(x, 0.8, z);
+  soul.mesh.position.set(x, groundHeight(x, z, sim.path, world.noise) + 0.8, z);
   scene.add(soul.mesh);
   souls.push(soul);
   if (kind === 'boss') {
     // shockwave rings + screen kick
     rings.push(makeBlastRing(4.2));
-    rings[rings.length - 1].mesh.position.set(x, 0.15, z);
+    rings[rings.length - 1].mesh.position.set(x, groundHeight(x, z, sim.path, world.noise) + 0.15, z);
     scene.add(rings[rings.length - 1].mesh);
     cameraKick = 1;
   }
@@ -87851,15 +87950,17 @@ function syncProjectiles(dt) {
     const k = clamp(p.t / p.dur, 0, 1);
     const m = p._mesh;
     const sx = p.sx, sz = p.sz;
+    const gx = lerp(sx, p.tx, k), gz = lerp(sz, p.tz, k);
+    const gy = groundHeight(gx, gz, sim.path, world.noise);
     if (p.kind === 'arrow') {
-      m.position.set(lerp(sx, p.tx, k), 1.7 + Math.sin(k * Math.PI) * 1.5, lerp(sz, p.tz, k));
+      m.position.set(gx, gy + 1.7 + Math.sin(k * Math.PI) * 1.5, gz);
       m.rotation.set(0, Math.atan2(p.tx - sx, p.tz - sz), 0);
       m.rotation.z = -Math.PI / 2;
     } else if (p.kind === 'ember') {
-      m.position.set(lerp(sx, p.tx, k), 2.2 + Math.sin(k * Math.PI) * 5.0, lerp(sz, p.tz, k));
+      m.position.set(gx, gy + 2.2 + Math.sin(k * Math.PI) * 5.0, gz);
       if (Math.random() < 0.55) fx.spawn(m.position.x, m.position.y, m.position.z, (Math.random() - 0.5) * 0.8, -0.8 - Math.random(), (Math.random() - 0.5) * 0.8, 0xff9b3e, 6, 0.5, 1.0);
     } else if (p.kind === 'petal') {
-      m.position.set(lerp(sx, p.tx, k), 1.4 - k * 0.8, lerp(sz, p.tz, k));
+      m.position.set(gx, gy + 1.4 - k * 0.8, gz);
       m.rotation.x += dt * 18;
       m.rotation.z += dt * 9;
     }
