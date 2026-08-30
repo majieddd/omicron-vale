@@ -29,7 +29,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xd9d3ba);
-scene.fog = new THREE.Fog(0xe3ddc2, 34, 95);
+scene.fog = new THREE.Fog(0xe3ddc2, 38, 165);
 
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 400);
 camera.position.set(0, 30, 30);
@@ -61,13 +61,13 @@ scene.add(rim);
 // ---------- world ----------
 const world = buildWorldScene();
 scene.add(world.group);
-const props = buildProps();
+const props = buildProps(world.path, world.noise);
 scene.add(props);
 const sky = buildSky();
 scene.add(sky);
 const hills = buildHills();
 scene.add(hills);
-const mist = buildMistLayers();
+const mist = buildMistLayers(world.path, world.noise);
 scene.add(mist.group);
 
 // ---------- fx ----------
@@ -200,9 +200,17 @@ function screenToGround(ev) {
   mouse.x = (ev.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(ev.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
-  const hit = raycaster.ray.intersectPlane(groundPlane, groundPt);
-  if (!hit) return null;
-  return { x: groundPt.x, z: groundPt.z };
+  // The ground is the planet cap (sphere at (0,-(R+CRUST),0), radius R).
+  // Ray-sphere shoot: keeps clicks true to the curved surface.
+  const o = raycaster.ray.origin, d = raycaster.ray.direction;
+  const c = new THREE.Vector3(0, -(WORLD.R_P + WORLD.CRUST), 0);
+  const L = new THREE.Vector3().subVectors(o, c);
+  const b = L.dot(d);
+  const disc = b * b - (L.lengthSq() - WORLD.R_P * WORLD.R_P);
+  if (disc < 0) return null;               // ray misses the planet
+  const t = -b - Math.sqrt(disc);
+  if (t < 0) return null;                  // intersection behind the camera
+  return { x: o.x + d.x * t, z: o.z + d.z * t };
 }
 
 // hover ghost update
@@ -403,7 +411,7 @@ function syncEnemies(dt) {
     }
     v.P.group.position.x = e.x;
     v.P.group.position.z = e.z;
-    v.P.group.position.y = 0;
+    v.P.group.position.y = groundHeight(e.x, e.z, sim.path, world.noise);
     // ease-rotate toward travel direction; stalker sway is applied to body, not group
     v.P.group.rotation.y += shortestAngle(v.P.group.rotation.y, e.face) * Math.min(1, dt * 6);
     animateEnemy(v.P, e, renderTime);
@@ -444,15 +452,15 @@ function spawnDeathBurst(id, v) {
     kind === 'beetle' ? [0x6f9d55, 0x9fce6a] :
     kind === 'stalker' ? [0xb7c49b, 0x86935f] :
     [0x87956a, 0xa5b475];
-  fx.burst(x, 0.7, z, { colors, count: kind === 'boss' ? 42 : 20, speed: kind === 'boss' ? 6.5 : 3.6, up: 2.4, life: 0.85, size: 10, grav: 7 });
+  fx.burst(x, groundHeight(x, z, sim.path, world.noise) + 0.7, z, { colors, count: kind === 'boss' ? 42 : 20, speed: kind === 'boss' ? 6.5 : 3.6, up: 2.4, life: 0.85, size: 10, grav: 7 });
   const soul = makeSoulBurst(colors[0]);
-  soul.mesh.position.set(x, 0.8, z);
+  soul.mesh.position.set(x, groundHeight(x, z, sim.path, world.noise) + 0.8, z);
   scene.add(soul.mesh);
   souls.push(soul);
   if (kind === 'boss') {
     // shockwave rings + screen kick
     rings.push(makeBlastRing(4.2));
-    rings[rings.length - 1].mesh.position.set(x, 0.15, z);
+    rings[rings.length - 1].mesh.position.set(x, groundHeight(x, z, sim.path, world.noise) + 0.15, z);
     scene.add(rings[rings.length - 1].mesh);
     cameraKick = 1;
   }
@@ -504,15 +512,17 @@ function syncProjectiles(dt) {
     const k = clamp(p.t / p.dur, 0, 1);
     const m = p._mesh;
     const sx = p.sx, sz = p.sz;
+    const gx = lerp(sx, p.tx, k), gz = lerp(sz, p.tz, k);
+    const gy = groundHeight(gx, gz, sim.path, world.noise);
     if (p.kind === 'arrow') {
-      m.position.set(lerp(sx, p.tx, k), 1.7 + Math.sin(k * Math.PI) * 1.5, lerp(sz, p.tz, k));
+      m.position.set(gx, gy + 1.7 + Math.sin(k * Math.PI) * 1.5, gz);
       m.rotation.set(0, Math.atan2(p.tx - sx, p.tz - sz), 0);
       m.rotation.z = -Math.PI / 2;
     } else if (p.kind === 'ember') {
-      m.position.set(lerp(sx, p.tx, k), 2.2 + Math.sin(k * Math.PI) * 5.0, lerp(sz, p.tz, k));
+      m.position.set(gx, gy + 2.2 + Math.sin(k * Math.PI) * 5.0, gz);
       if (Math.random() < 0.55) fx.spawn(m.position.x, m.position.y, m.position.z, (Math.random() - 0.5) * 0.8, -0.8 - Math.random(), (Math.random() - 0.5) * 0.8, 0xff9b3e, 6, 0.5, 1.0);
     } else if (p.kind === 'petal') {
-      m.position.set(lerp(sx, p.tx, k), 1.4 - k * 0.8, lerp(sz, p.tz, k));
+      m.position.set(gx, gy + 1.4 - k * 0.8, gz);
       m.rotation.x += dt * 18;
       m.rotation.z += dt * 9;
     }

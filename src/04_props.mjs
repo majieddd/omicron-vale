@@ -1,9 +1,13 @@
 // Props: the diorama flock. Willow, thatched hut, faceted boulders, trees, fences, reeds, cairns.
 import * as THREE from 'three';
 import { mulberry32, clamp, lerp, PAL, paintThatch, paintPlanks, paintStone, paintGrass, canvasTexture } from './00_util.mjs';
-import { makeNoise2D } from './03_world.mjs';
+import { makeNoise2D, groundHeight } from './03_world.mjs';
 
 const rng = mulberry32(20260829);
+
+// Context set by buildProps: every prop anchors to the curved ground via this.
+const PROP = { path: null, noise: null };
+function gy(x, z) { return groundHeight(x, z, PROP.path, PROP.noise); }
 
 function std(color, opts = {}) {
   return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.95, metalness: 0, flatShading: true }, opts));
@@ -297,7 +301,7 @@ export function buildRockField() {
   ];
   for (const [x, y, z, s] of spots) {
     const r = makeRock(s, colors[(rng() * colors.length) | 0]);
-    r.position.set(x, y * 0.8, z);
+    r.position.set(x, groundHeight(x, z, PROP.path, PROP.noise) + y * 0.8, z);
     r.rotation.y = rng() * Math.PI * 2;
     g.add(r);
   }
@@ -361,7 +365,7 @@ export function buildTreefield() {
   let i = 0;
   for (const [x, z, s] of spots) {
     const t = buildTree(kinds[i++ % kinds.length]);
-    t.position.set(x, 0, z);
+    t.position.set(x, gy(x, z), z);
     t.scale.setScalar(s);
     g.add(t);
   }
@@ -375,10 +379,11 @@ export function buildReeds() {
   const mat = new THREE.MeshStandardMaterial({ color: 0xb3a36c, roughness: 1, flatShading: true, side: THREE.DoubleSide });
   const dark = new THREE.MeshStandardMaterial({ color: 0x8a7f4f, roughness: 1, flatShading: true, side: THREE.DoubleSide });
   const cluster = (x, z, n, size) => {
+    const gyC = gy(x, z);
     for (let i = 0; i < n; i++) {
       const h = size * (0.7 + rng() * 0.5);
       const s = new THREE.Mesh(new THREE.ConeGeometry(0.05, h, 3), rng() > 0.4 ? mat : dark);
-      s.position.set(x + (rng() - 0.5) * 0.5, h / 2, z + (rng() - 0.5) * 0.5);
+      s.position.set(x + (rng() - 0.5) * 0.5, gyC + h / 2, z + (rng() - 0.5) * 0.5);
       s.rotation.z = (rng() - 0.5) * 0.22;
       g.add(s);
     }
@@ -407,7 +412,7 @@ export function buildGrassTufts() {
       const h = 0.25 + rng() * 0.45;
       eul.set(0, 0, (rng() - 0.5) * 0.35);
       q.setFromEuler(eul);
-      m4.compose(pos.set(x + (rng() - 0.5) * 0.4, h / 2, z + (rng() - 0.5) * 0.4), q, scl.set(1, h, 1));
+      m4.compose(pos.set(x + (rng() - 0.5) * 0.4, gy(x, z) + h / 2, z + (rng() - 0.5) * 0.4), q, scl.set(1, h, 1));
       parts.push({ geo: bladeGeo, matrix: m4.clone(), color: rng() > 0.5 ? cMid : cHi });
     }
   }
@@ -429,7 +434,7 @@ export function buildFences() {
       const z = lerp(z0, z1, t);
       const h = 1.15 + (rng() - 0.5) * 0.2;
       const p = new THREE.Mesh(new THREE.BoxGeometry(0.12, h, 0.12), postMat);
-      p.position.set(x, h / 2, z);
+      p.position.set(x, gy(x, z) + h / 2, z);
       p.rotation.z = (rng() - 0.5) * 0.16;
       p.castShadow = true;
       g.add(p);
@@ -440,12 +445,13 @@ export function buildFences() {
       const xb = lerp(x0, x1, (i + 1) / n), zb = lerp(z0, z1, (i + 1) / n);
       const len = Math.hypot(xb - xa, zb - za) + 0.15;
       const rim = new THREE.Mesh(new THREE.BoxGeometry(len, 0.09, 0.09), postMat);
-      rim.position.set((xa + xb) / 2, 0.62, (za + zb) / 2);
+      const midG = gy((xa + xb) / 2, (za + zb) / 2);
+      rim.position.set((xa + xb) / 2, midG + 0.62, (za + zb) / 2);
       rim.rotation.y = Math.atan2(-(zb - za), xb - xa);
       rim.rotation.z = 0.02;
       g.add(rim);
       const rim2 = rim.clone();
-      rim2.position.y = 0.95;
+      rim2.position.y = midG + 0.95;
       g.add(rim2);
     }
   };
@@ -455,14 +461,15 @@ export function buildFences() {
   return g;
 }
 
-export function buildProps() {
+export function buildProps(path, noise) {
+  PROP.path = path; PROP.noise = noise;
   const g = new THREE.Group();
   g.name = 'props';
   const willow = buildWillow(1.15);
-  willow.position.set(-5.6, 0, -0.6); // mid-ground hero, near path center-left
+  willow.position.set(-5.6, gy(-5.6, -0.6), -0.6); // mid-ground hero, near path center-left
   g.add(willow);
   const hut = buildHut();
-  hut.position.set(18.8, 0, -0.4);  // at the path end = the hearth
+  hut.position.set(18.8, gy(18.8, -0.4), -0.4);  // at the path end = the hearth
   hut.rotation.y = -Math.PI / 2 + 0.06;
   g.add(hut);
   g.add(buildRockField());
@@ -471,7 +478,7 @@ export function buildProps() {
   g.add(buildGrassTufts());
   g.add(buildFences());
   const cairn = buildCairn();
-  cairn.position.set(-2.2, 0, 6.4);
+  cairn.position.set(-2.2, gy(-2.2, 6.4), 6.4);
   g.add(cairn);
   return g;
 }
